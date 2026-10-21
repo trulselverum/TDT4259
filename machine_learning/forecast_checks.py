@@ -17,6 +17,7 @@ Usage:
     validator.add("XGBoost", pred)
     validator.summary()
     validator.plot_predicted_vs_actual_consumption()
+    validator.plot_consumption_over_time(test["time"])
 """
 from __future__ import annotations
 
@@ -261,6 +262,33 @@ class ForecastValidator:
             ax.set_title(str(group))
         for ax in axes[-1]:
             ax.set_xlabel("Actual [MW]")
+        plt.show()
+
+    def plot_consumption_over_time(self, time: pd.Series) -> None:
+        """Actual (red) and forecast (blue) consumption against time: one row per group, one column per forecast.
+
+        time holds the timestamp of each row of actual, e.g. trainer.df.loc[y_test.index, "time"].
+        """
+        self._require_forecasts()
+        if not isinstance(time, pd.Series):
+            raise TypeError(f"time must be a Series, got {type(time).__name__}")
+        if not time.index.equals(self.actual.index):
+            raise ValueError("time must have the same index as actual")
+        groups = self.groups if self.groups is not None else pd.Series("all", index=self.actual.index)
+        indices = groups.groupby(groups, observed=True).groups
+        _, axes = plt.subplots(len(indices), len(self.forecasts), sharex=True, sharey="row", squeeze=False,
+                               figsize=(8 * len(self.forecasts), 2.5 * len(indices)), layout="constrained")
+        for row, (group, idx) in zip(axes, indices.items()):
+            idx = time[idx].sort_values().index
+            row[0].set_ylabel(f"{group}\nconsumption [MW]")
+            for ax, forecast in zip(row, self.forecasts.values()):
+                ax.plot(time[idx], self.actual[idx], color="#e34948", linewidth=1, label="Actual")
+                ax.plot(time[idx], forecast[idx], color="#2a78d6", linewidth=1, label="Forecast")
+        for ax, name in zip(axes[0], self.forecasts):
+            ax.set_title(name)
+        for ax in axes[-1]:
+            ax.set_xlabel("Date")
+        axes[0, 0].legend(loc="upper right")
         plt.show()
 
 
