@@ -16,6 +16,7 @@ Usage:
     validator.add("Same hour last week", test["consumption_7days_ago"])
     validator.add("XGBoost", pred)
     validator.summary()
+    validator.plot_predicted_vs_actual_consumption()
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import TypedDict
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -236,6 +238,30 @@ class ForecastValidator:
     def _require_forecasts(self) -> None:
         if not self.forecasts:
             raise ValueError("Add at least one forecast with add()")
+
+    def plot_predicted_vs_actual_consumption(self) -> None:
+        """Scatter of forecast against actual consumption: one row per forecast, one column per group.
+
+        Points on the dashed diagonal are perfect forecasts, points above it are overforecasts.
+        Panels in a column share axes, so the forecasts for one group can be compared directly.
+        """
+        self._require_forecasts()
+        groups = self.groups if self.groups is not None else pd.Series("all", index=self.actual.index)
+        indices = groups.groupby(groups, observed=True).groups
+        _, axes = plt.subplots(len(self.forecasts), len(indices), sharex="col", sharey="col", squeeze=False,
+                               figsize=(3 * len(indices), 3 * len(self.forecasts)), layout="constrained")
+        for row, (name, forecast) in zip(axes, self.forecasts.items()):
+            row[0].set_ylabel(f"{name}\nforecast [MW]")
+            for ax, idx in zip(row, indices.values()):
+                ax.scatter(self.actual[idx], forecast[idx], s=6, alpha=0.3, linewidths=0, color="#2a78d6")
+                #Anchored at the smallest actual value so the line does not stretch the axes down to 0
+                low = self.actual[idx].min()
+                ax.axline((low, low), slope=1, color="#52514e", linestyle="--", linewidth=1)
+        for ax, group in zip(axes[0], indices):
+            ax.set_title(str(group))
+        for ax in axes[-1]:
+            ax.set_xlabel("Actual [MW]")
+        plt.show()
 
 
 class FeatureTarget(TypedDict):
