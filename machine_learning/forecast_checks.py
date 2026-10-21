@@ -13,14 +13,16 @@ Usage:
     LeakageChecker.check_feature_names(feats)
 
     validator = ForecastValidator(test["consumption"], groups=test["location"])
-    validator.add("Same hour last week", test["consumption_7days_ago"])
+    validator.add("Same hour last week", test["consumption_7days_ago"], baseline=True)
     validator.add("XGBoost", pred)
     validator.summary()
-    validator.plot_predicted_vs_actual_consumption()
+    validator.save_to_json("results/xgboost.json")
+    validator.plot_predicted_vs_actual_consumption(no_baseline=True)   #plots without the baseline
     validator.plot_consumption_over_time(test["time"])
 """
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import TypedDict
@@ -171,13 +173,13 @@ class LeakageChecker:
 
 
 class ForecastValidator:
-    """Scores forecasts against the actual consumption with MAE, MAE % of total consumption and MSE.
+    """Scores forecasts against the actual consumption with MAE, RMSE, nMAE and bias.
 
-    MAE % of total = 100 * sum|error| / sum(actual): the share of consumption that ends up as imbalance,
-    which makes locations of different size comparable.
+    nMAE = 100 * sum|error| / sum(actual): the share of consumption that ends up as imbalance,
+    which makes locations of different size comparable. Bias = mean(forecast - actual), positive = overforecast.
     """
 
-    METRICS = ["mae", "mae_pct_of_total", "mse"]
+    METRICS = ["mae", "rmse", "nmae", "bias"]
 
     def __init__(self, actual: pd.Series, groups: pd.Series | None = None) -> None:
         if not isinstance(actual, pd.Series):
@@ -194,9 +196,14 @@ class ForecastValidator:
         self.actual = actual
         self.groups = groups
         self.forecasts: dict[str, pd.Series] = {}
+        self.baseline: str | None = None
 
-    def add(self, name: str, forecast: pd.Series | np.ndarray | Sequence[float]) -> ForecastValidator:
-        """Register a forecast; an array must be in the same order as actual."""
+    def add(self, name: str, forecast: pd.Series | np.ndarray | Sequence[float],
+            baseline: bool = False) -> ForecastValidator:
+        """Register a forecast; an array must be in the same order as actual.
+
+        baseline=True marks the reference forecast, which the plots leave out with no_baseline=True.
+        """
         if not isinstance(name, str):
             raise TypeError(f"name must be a str, got {type(name).__name__}")
         if isinstance(forecast, pd.Series):
@@ -212,14 +219,17 @@ class ForecastValidator:
             #Silently dropping rows would score models on different hours
             raise ValueError(f"{name}: forecast has {int(forecast.isna().sum())} missing values")
         self.forecasts[name] = forecast.astype(float)
+        if baseline:
+            self.baseline = name
         return self
 
     @staticmethod
     def score(actual: pd.Series, forecast: pd.Series) -> dict[str, float]:
-        error = actual - forecast
+        error = forecast - actual
         return {"mae": float(error.abs().mean()),
-                "mae_pct_of_total": float(100 * error.abs().sum() / actual.sum()),
-                "mse": float((error ** 2).mean())}
+                "rmse": float(np.sqrt((error ** 2).mean())),
+                "nmae": float(100 * error.abs().sum() / actual.sum()),
+                "bias": float(error.mean())}
 
     def summary(self) -> pd.DataFrame:
         """One row per forecast, scored over all rows."""
@@ -236,22 +246,46 @@ class ForecastValidator:
                 for group, idx in self.groups.groupby(self.groups, observed=True).groups.items()}
         return pd.DataFrame(rows).T.rename_axis(["model", "group"])[self.METRICS]
 
+    def save_to_json(self, path: str | Path) -> None:
+        """Write the scores of this run to path: summary per model and, with groups, scores per model and group."""
+        results = {"n_hours": len(self.actual), "baseline": self.baseline,
+                   "summary": self.summary().to_dict(orient="index")}
+        if self.groups is not None:
+            results["per_group"] = {name: {str(group): self.score(self.actual[idx], f[idx])
+                                           for group, idx in self.groups.groupby(self.groups, observed=True).groups.items()}
+                                    for name, f in self.forecasts.items()}
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(results, indent=2))
+
     def _require_forecasts(self) -> None:
         if not self.forecasts:
             raise ValueError("Add at least one forecast with add()")
 
-    def plot_predicted_vs_actual_consumption(self) -> None:
+    def _plotted(self, no_baseline: bool) -> dict[str, pd.Series]:
+        """The forecasts to plot, without the baseline when no_baseline is set."""
+        self._require_forecasts()
+        if not no_baseline:
+            return self.forecasts
+        if self.baseline is None:
+            raise ValueError("no_baseline=True needs a forecast added with baseline=True")
+        forecasts = {name: f for name, f in self.forecasts.items() if name != self.baseline}
+        if not forecasts:
+            raise ValueError("Only the baseline has been added, so there is nothing to plot")
+        return forecasts
+
+    def plot_predicted_vs_actual_consumption(self, no_baseline: bool = False) -> None:
         """Scatter of forecast against actual consumption: one row per forecast, one column per group.
 
         Points on the dashed diagonal are perfect forecasts, points above it are overforecasts.
         Panels in a column share axes, so the forecasts for one group can be compared directly.
         """
-        self._require_forecasts()
+        forecasts = self._plotted(no_baseline)
         groups = self.groups if self.groups is not None else pd.Series("all", index=self.actual.index)
         indices = groups.groupby(groups, observed=True).groups
-        _, axes = plt.subplots(len(self.forecasts), len(indices), sharex="col", sharey="col", squeeze=False,
-                               figsize=(3 * len(indices), 3 * len(self.forecasts)), layout="constrained")
-        for row, (name, forecast) in zip(axes, self.forecasts.items()):
+        _, axes = plt.subplots(len(forecasts), len(indices), sharex="col", sharey="col", squeeze=False,
+                               figsize=(3 * len(indices), 3 * len(forecasts)), layout="constrained")
+        for row, (name, forecast) in zip(axes, forecasts.items()):
             row[0].set_ylabel(f"{name}\nforecast [MW]")
             for ax, idx in zip(row, indices.values()):
                 ax.scatter(self.actual[idx], forecast[idx], s=6, alpha=0.3, linewidths=0, color="#2a78d6")
@@ -264,27 +298,27 @@ class ForecastValidator:
             ax.set_xlabel("Actual [MW]")
         plt.show()
 
-    def plot_consumption_over_time(self, time: pd.Series) -> None:
+    def plot_consumption_over_time(self, time: pd.Series, no_baseline: bool = False) -> None:
         """Actual (red) and forecast (blue) consumption against time: one row per group, one column per forecast.
 
         time holds the timestamp of each row of actual, e.g. trainer.df.loc[y_test.index, "time"].
         """
-        self._require_forecasts()
+        forecasts = self._plotted(no_baseline)
         if not isinstance(time, pd.Series):
             raise TypeError(f"time must be a Series, got {type(time).__name__}")
         if not time.index.equals(self.actual.index):
             raise ValueError("time must have the same index as actual")
         groups = self.groups if self.groups is not None else pd.Series("all", index=self.actual.index)
         indices = groups.groupby(groups, observed=True).groups
-        _, axes = plt.subplots(len(indices), len(self.forecasts), sharex=True, sharey="row", squeeze=False,
-                               figsize=(8 * len(self.forecasts), 2.5 * len(indices)), layout="constrained")
+        _, axes = plt.subplots(len(indices), len(forecasts), sharex=True, sharey="row", squeeze=False,
+                               figsize=(8 * len(forecasts), 2.5 * len(indices)), layout="constrained")
         for row, (group, idx) in zip(axes, indices.items()):
             idx = time[idx].sort_values().index
             row[0].set_ylabel(f"{group}\nconsumption [MW]")
-            for ax, forecast in zip(row, self.forecasts.values()):
+            for ax, forecast in zip(row, forecasts.values()):
                 ax.plot(time[idx], self.actual[idx], color="#e34948", linewidth=1, label="Actual")
                 ax.plot(time[idx], forecast[idx], color="#2a78d6", linewidth=1, label="Forecast")
-        for ax, name in zip(axes[0], self.forecasts):
+        for ax, name in zip(axes[0], forecasts):
             ax.set_title(name)
         for ax in axes[-1]:
             ax.set_xlabel("Date")
