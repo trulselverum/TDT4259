@@ -3,9 +3,10 @@
 Forecasting situation (see .claude/task_description.md): the forecast for local day T is made at 10:00
 on day T-1, and metered consumption arrives with a delay of about 5 days. On 18 Sep at 10:00 we forecast
 19 Sep and have consumption up to and including 13 Sep, so the last available day is T-6.
-Temperature is a forecast, so values up to and including day T are known.
+Weather is a forecast, so values up to and including day T are known.
 
 Usage:
+    data = MakeTrainingData().get_train_test(0.8)      #data["train"]["feature"], data["train"]["target"]
     checker = LeakageChecker(df)                       #raw data: time (UTC), location, consumption, temperature
     checker.check_features(lambda raw: FeatureBuilder(raw).add_lag_features((6, 7)).df)
     LeakageChecker.check_split(train["date"], test["date"])
@@ -19,6 +20,8 @@ Usage:
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
+from pathlib import Path
+from typing import TypedDict
 
 import numpy as np
 import pandas as pd
@@ -27,9 +30,7 @@ DELAY_DAYS = 5
 TIMEZONES = {"helsingfors": "Europe/Helsinki"}
 DEFAULT_TIMEZONE = "Europe/Oslo"
 KEY_COLS = ["location", "time"]
-#Open-Meteo archive (ERA5 reanalysis) is observed weather, not a forecast, so it is not known at 10:00 the day before
-OBSERVED_WEATHER_COLS = ["temperature_2m", "precipitation", "rain", "snowfall",
-                         "wind_speed_10m", "wind_gusts_10m", "wind_direction_10m"]
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
 class LeakageError(AssertionError):
@@ -136,10 +137,10 @@ class LeakageChecker:
 
     @staticmethod
     def check_feature_names(feature_cols: Iterable[str], target_col: str = "consumption") -> None:
-        """Model inputs must not include the target or observed (non-forecast) weather."""
+        """Model inputs must not include the target."""
         if isinstance(feature_cols, str):
             raise TypeError("feature_cols must be a list of column names, not a single string")
-        forbidden = sorted(set(feature_cols) & set(OBSERVED_WEATHER_COLS + [target_col]))
+        forbidden = sorted(set(feature_cols) & {target_col})
         if forbidden:
             raise LeakageError(f"Not available at forecast time: {forbidden}")
 
@@ -235,3 +236,46 @@ class ForecastValidator:
     def _require_forecasts(self) -> None:
         if not self.forecasts:
             raise ValueError("Add at least one forecast with add()")
+
+
+class FeatureTarget(TypedDict):
+    feature: pd.DataFrame
+    target: pd.Series
+
+
+class MakeTrainingData:
+    """Loads the prepared dataset and splits it chronologically, matching what is known at forecast time.
+
+    Features are every column except time, date, the target and exclude_columns: weather for day T itself
+    and consumption lags of at least DELAY_DAYS + 1 days.
+    """
+
+    def __init__(self, from_csv: str | Path = DATA_DIR / "dataset.csv",
+                 exclude_columns: Iterable[str] = (), target_col: str = "consumption") -> None:
+        if isinstance(exclude_columns, str):
+            raise TypeError("exclude_columns must be a list of column names, not a single string")
+        self.df = pd.read_csv(from_csv, parse_dates=["time", "date"])
+        if target_col not in self.df.columns:
+            raise ValueError(f"{from_csv} has no column {target_col!r}")
+        self.df["location"] = self.df["location"].astype("category")
+        self.target_col = target_col
+        self.feature_cols = [c for c in self.df.columns if c not in {"time", "date", target_col, *exclude_columns}]
+        LeakageChecker.check_feature_names(self.feature_cols, target_col)
+
+    def get_train_test(self, split_percent: float = 0.8) -> dict[str, FeatureTarget]:
+        """Train on the first split_percent of the period and test on the rest.
+
+        Consumption arrives DELAY_DAYS late, so training ends DELAY_DAYS + 1 days before the first test day:
+        the last day whose consumption is known when that day is forecast. Weather needs no gap.
+        """
+        if not 0 < split_percent < 1:
+            raise ValueError(f"split_percent must be between 0 and 1, got {split_percent}")
+        start, end = self.df["date"].min(), self.df["date"].max()
+        cutoff = (start + split_percent * (end - start)).normalize()
+        train = self.df[self.df["date"] <= cutoff - pd.Timedelta(days=DELAY_DAYS + 1)]
+        test = self.df[self.df["date"] >= cutoff]
+        if train.empty or test.empty:
+            raise ValueError(f"split_percent={split_percent} leaves the train or test set empty")
+        LeakageChecker.check_split(train["date"], test["date"])
+        return {name: {"feature": part[self.feature_cols], "target": part[self.target_col]}
+                for name, part in (("train", train), ("test", test))}
