@@ -5,10 +5,13 @@
     - [ ]  teste med å legge til features ved å se på om de nye featurene er korrelert med output
     - [ ]  vis at noen engineered features ikke er viktige fordi de ikke er korrolert med consumption
 - [ ]  kilder for hvilke modeler er best
-- [ ]  kilder for valg av baseline, evt en god begrunnelse
+    https://medium.com/@itsmesut/comparing-7-machine-learning-models-for-electricity-consumption-forecasting-a-practical-2cc4633e0de0
+- [ ]  kilder for valg av baseline -> seasonal naive model
+    https://medium.com/@soulawalid/where-patterns-repeat-and-the-future-quietly-echoes-the-past-bb24d44a53da
 - [ ]  begrunne alle valg relativt tydelig
-    - [ ]  RMSE vs MAE
+    - [ ]  MAE - as cost grows linearly with error (assumption)
     - [ ]  tydeligere argumentasjon for modellvalg
+    https://medium.com/@itsmesut/comparing-7-machine-learning-models-for-electricity-consumption-forecasting-a-practical-2cc4633e0de0
 - [ ]  bygg om neural net til å bruke sliding window
 
 
