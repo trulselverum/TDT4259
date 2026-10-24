@@ -7,6 +7,7 @@ Weather is a forecast, so values up to and including day T are known.
 
 Usage:
     data = MakeTrainingData().get_train_test(0.8)      #data["train"]["feature"], data["train"]["target"]
+    folds = MakeTrainingData().walk_forward("2022-09-01")   #monthly folds, each shaped like data above
     checker = LeakageChecker(df)                       #raw data: time (UTC), location, consumption, temperature
     checker.check_features(lambda raw: FeatureBuilder(raw).add_lag_features((6, 7)).df)
     LeakageChecker.check_split(train["date"], test["date"])
@@ -16,6 +17,7 @@ Usage:
     validator.add("Same hour last week", test["consumption_7days_ago"], baseline=True)
     validator.add("XGBoost", pred)
     validator.summary()
+    validator.per_period(test["date"])                 #scores per month
     validator.save_to_json("results/xgboost.json")
     validator.plot_predicted_vs_actual_consumption(no_baseline=True)   #plots without the baseline
     validator.plot_consumption_over_time(test["time"])
@@ -241,10 +243,26 @@ class ForecastValidator:
         self._require_forecasts()
         if self.groups is None:
             raise ValueError("Pass groups to the constructor to score per group")
-        rows = {(name, group): self.score(self.actual[idx], f[idx])
+        return self._score_by(self.groups).rename_axis(["model", "group"])
+
+    def per_period(self, dates: pd.Series, freq: str = "M") -> pd.DataFrame:
+        """One row per (forecast, period), e.g. per month, to see how the error changes with the season.
+
+        dates holds the date of each row of actual, e.g. trainer.df.loc[y_test.index, "date"].
+        """
+        if not isinstance(dates, pd.Series):
+            raise TypeError(f"dates must be a Series, got {type(dates).__name__}")
+        if not dates.index.equals(self.actual.index):
+            raise ValueError("dates must have the same index as actual")
+        periods = pd.to_datetime(dates).dt.to_period(freq)
+        return self._score_by(periods).rename_axis(["model", "period"])
+
+    def _score_by(self, keys: pd.Series) -> pd.DataFrame:
+        self._require_forecasts()
+        rows = {(name, key): self.score(self.actual[idx], f[idx])
                 for name, f in self.forecasts.items()
-                for group, idx in self.groups.groupby(self.groups, observed=True).groups.items()}
-        return pd.DataFrame(rows).T.rename_axis(["model", "group"])[self.METRICS]
+                for key, idx in keys.groupby(keys, observed=True).groups.items()}
+        return pd.DataFrame(rows).T[self.METRICS]
 
     def save_to_json(self, path: str | Path) -> None:
         """Write the scores of this run to path: summary per model and, with groups, scores per model and group."""
@@ -365,5 +383,37 @@ class MakeTrainingData:
         if train.empty or test.empty:
             raise ValueError(f"split_percent={split_percent} leaves the train or test set empty")
         LeakageChecker.check_split(train["date"], test["date"])
-        return {name: {"feature": part[self.feature_cols], "target": part[self.target_col]}
-                for name, part in (("train", train), ("test", test))}
+        return {"train": self._feature_target(train), "test": self._feature_target(test)}
+
+    def walk_forward(self, first_test: str | pd.Timestamp, freq: str = "MS", until: str | pd.Timestamp | None = None,
+                     window_days: int | None = None) -> list[dict[str, FeatureTarget]]:
+        """Rolling-origin folds: retrain at the start of every test block and forecast that block.
+
+        Test blocks start at pd.date_range(first_test, until, freq) and run to the next start; the last one
+        runs to until (default: the last day in the data). Each fold trains on every day whose consumption is
+        known when its first test day is forecast (DELAY_DAYS + 1 days earlier), so the training set expands
+        fold by fold. With window_days, training is limited to the last window_days days (sliding window).
+        """
+        if window_days is not None and (not isinstance(window_days, int) or window_days <= 0):
+            raise ValueError(f"window_days must be a positive int or None, got {window_days}")
+        until = self.df["date"].max() if until is None else pd.Timestamp(until)
+        starts = pd.date_range(pd.Timestamp(first_test), until, freq=freq)
+        if starts.empty:
+            raise ValueError(f"No test block starts between {first_test} and {until.date()} with freq={freq!r}")
+        ends = list(starts[1:] - pd.Timedelta(days=1)) + [until]
+        folds = []
+        for start, end in zip(starts, ends):
+            train_end = start - pd.Timedelta(days=DELAY_DAYS + 1)
+            in_train = self.df["date"] <= train_end
+            if window_days is not None:
+                in_train &= self.df["date"] > train_end - pd.Timedelta(days=window_days)
+            train = self.df[in_train]
+            test = self.df[(self.df["date"] >= start) & (self.df["date"] <= end)]
+            if train.empty or test.empty:
+                raise ValueError(f"Fold starting {start.date()} has an empty train or test set")
+            LeakageChecker.check_split(train["date"], test["date"])
+            folds.append({"train": self._feature_target(train), "test": self._feature_target(test)})
+        return folds
+
+    def _feature_target(self, part: pd.DataFrame) -> FeatureTarget:
+        return {"feature": part[self.feature_cols], "target": part[self.target_col]}
