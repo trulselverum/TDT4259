@@ -2,7 +2,8 @@
 
 Each row is one target hour. Its input is a sequence of two channels, the consumption window ending
 WINDOW_START_LAG hours before the hour and the temperature forecast window ending at the hour (both built by
-MakeTrainingData(window_hours=...)), plus one-hot location, hour and weekday.
+MakeTrainingData(window_hours=...)), plus static inputs for the target hour: one-hot location, hour and weekday,
+the holiday flag and the weather.
 """
 from __future__ import annotations
 
@@ -17,10 +18,17 @@ SEED = 42
 MAX_EPOCHS = 40
 PATIENCE = 5
 N_SEEDS = 5
+#Weather for the target hour. rain is left out (it is precipitation minus snow), and so is weekend (weekday covers it)
+#Precipitation and snowfall are mostly zero with rare large values, so they get log(1 + x) instead of standardizing:
+#snowfall is almost never above zero before December, so its training std is tiny and January snow would be 30+ std out
+SKEWED_WEATHER = ["precipitation", "snowfall"]
+WEATHER_COLS = [*SKEWED_WEATHER, "wind_speed_10m", "wind_direction_10m"]
+FLAG_COLS = ["holiday"]
+STATIC_COLS = [*FLAG_COLS, *WEATHER_COLS]
 
 
 class WindowScaler:
-    """Scaling fitted on training data only: consumption relative to each location's mean, temperature standardized."""
+    """Scaling fitted on training data only: consumption relative to each location's mean, temperature and wind speed standardized."""
 
     def __init__(self, data: pd.DataFrame, consumption_window: list[str], temperature_window: list[str],
                  locations: list[str]) -> None:
@@ -32,19 +40,28 @@ class WindowScaler:
         self.level = data.groupby("location", observed=True)["consumption"].mean()
         temperature = data[temperature_window].to_numpy()
         self.temp_mean, self.temp_std = temperature.mean(), temperature.std()
+        self.wind_mean, self.wind_std = data["wind_speed_10m"].mean(), data["wind_speed_10m"].std()
+
+    def weather(self, data: pd.DataFrame) -> np.ndarray:
+        """Log of the skewed amounts, standardized wind speed, and wind direction as sin/cos so 359° is next to 1°."""
+        radians = np.deg2rad(data["wind_direction_10m"])
+        return np.column_stack([*(np.log1p(data[col]) for col in SKEWED_WEATHER),
+                                (data["wind_speed_10m"] - self.wind_mean) / self.wind_std,
+                                np.sin(radians), np.cos(radians)])
 
     def levels(self, data: pd.DataFrame) -> np.ndarray:
         return data["location"].map(self.level).to_numpy(dtype=float)
 
     def X(self, data: pd.DataFrame) -> tuple[torch.Tensor, torch.Tensor]:
-        """(sequence [rows, 2, window], static [rows, one-hots]); the window runs from the oldest hour to the newest."""
+        """(sequence [rows, 2, window], static [rows, one-hots + flags + weather]); the window runs from the oldest hour to the newest."""
         consumption = data[self.consumption_window].to_numpy() / self.levels(data)[:, None]
         temperature = (data[self.temperature_window].to_numpy() - self.temp_mean) / self.temp_std
         sequence = np.stack([consumption, temperature], axis=1)
         onehot = [pd.get_dummies(pd.Categorical(data[col], categories=cats)).to_numpy()
                   for col, cats in (("location", self.locations), ("hour", range(24)), ("weekday", range(7)))]
+        flags = data[FLAG_COLS].to_numpy(dtype=float)
         return (torch.tensor(sequence, dtype=torch.float32),
-                torch.tensor(np.hstack(onehot), dtype=torch.float32))
+                torch.tensor(np.hstack([*onehot, flags, self.weather(data)]), dtype=torch.float32))
 
     def y(self, data: pd.DataFrame) -> torch.Tensor:
         return torch.tensor(data["consumption"].to_numpy() / self.levels(data), dtype=torch.float32)
@@ -107,12 +124,25 @@ def train_model(params: dict, X: tuple[torch.Tensor, torch.Tensor], y: torch.Ten
     return model, best_mae, best_epoch
 
 
+def ensemble_fit(params: dict, epochs: int, fit_data: pd.DataFrame, scaler: WindowScaler) -> list[WindowCNN]:
+    """N_SEEDS networks that differ only in seed. scaler must be fitted on fit_data."""
+    X, y = scaler.X(fit_data), scaler.y(fit_data)
+    return [train_model(params, X, y, epochs, seed=SEED + i)[0] for i in range(N_SEEDS)]
+
+
+def ensemble_predict(models: list[WindowCNN], pred_data: pd.DataFrame, scaler: WindowScaler) -> np.ndarray:
+    """Mean forecast in MW of the networks; averaging removes much of the seed-to-seed variance."""
+    X_pred = scaler.X(pred_data)
+    return scaler.to_mw(pred_data, np.mean([predict(model, X_pred) for model in models], axis=0))
+
+
 def ensemble_forecast(params: dict, epochs: int, fit_data: pd.DataFrame, pred_data: pd.DataFrame,
                       scaler: WindowScaler) -> np.ndarray:
-    """Mean forecast in MW of N_SEEDS networks that differ only in seed; averaging removes much of the seed-to-seed variance.
+    """ensemble_fit on fit_data, then ensemble_predict on pred_data."""
+    return ensemble_predict(ensemble_fit(params, epochs, fit_data, scaler), pred_data, scaler)
 
-    scaler must be fitted on fit_data.
-    """
-    X, y, X_pred = scaler.X(fit_data), scaler.y(fit_data), scaler.X(pred_data)
-    preds = [predict(train_model(params, X, y, epochs, seed=SEED + i)[0], X_pred) for i in range(N_SEEDS)]
-    return scaler.to_mw(pred_data, np.mean(preds, axis=0))
+
+def target_day_temperature(data: pd.DataFrame, temperature_window: list[str]) -> pd.DataFrame:
+    """Which cells of the temperature window lie in the target day: lag k h of local hour h is on the same day when k <= h."""
+    lags = np.array([int(col.removeprefix("temperature_lag_").removesuffix("h")) for col in temperature_window])
+    return pd.DataFrame(lags[None, :] <= data["hour"].to_numpy()[:, None], index=data.index, columns=temperature_window)

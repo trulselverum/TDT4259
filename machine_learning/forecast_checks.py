@@ -20,6 +20,16 @@ Usage:
     validator.save_to_json("results/xgboost.json")
     validator.plot_predicted_vs_actual_consumption(no_baseline=True)   #plots without the baseline
     validator.plot_consumption_over_time(test["time"])
+
+    #Error analysis (error_analysis.ipynb)
+    validator.per_group(skill=True)                    #skill = 1 - MAE / MAE of the baseline
+    validator.per(test["hour"])                        #scores per hour, month, temperature bin, ...
+    validator.save_predictions("results/xgboost_predictions.json")    #ForecastValidator.load_predictions(path)
+    validator.plot_metric_by(test["hour"], metric="nmae")
+    validator.plot_rolling_bias(test["time"])
+    permutation_importance(model.predict, X_test, y_test, {"temperature": ["temperature"]})
+    temperature_noise_sensitivity(model.predict, X_test, y_test, test["date"], ["temperature"])
+    MakeTrainingData.validation_windows(train["date"])  #3 x 2-week (fit, validation) windows at the end of training
 """
 from __future__ import annotations
 
@@ -53,6 +63,21 @@ def local_date(df: pd.DataFrame) -> pd.Series:
     parts = [times.dt.tz_convert(TIMEZONES.get(str(location), DEFAULT_TIMEZONE)).dt.tz_localize(None).dt.normalize()
              for location, times in df.groupby("location", observed=True)["time"]]
     return pd.concat(parts).reindex(df.index)
+
+
+def _write_json(path: str | Path, content: dict) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(content, indent=2))
+
+
+def save_tables(path: str | Path, **tables: pd.DataFrame) -> None:
+    """Write named tables, e.g. permutation_importance and temperature_noise_sensitivity results, to one JSON file."""
+    _write_json(path, {name: table.to_dict(orient="split") for name, table in tables.items()})
+
+
+def load_tables(path: str | Path) -> dict[str, pd.DataFrame]:
+    return {name: pd.DataFrame(**table) for name, table in json.loads(Path(path).read_text()).items()}
 
 
 class LeakageChecker:
@@ -90,7 +115,8 @@ class LeakageChecker:
                                  (self.forecast_cols, target_day)):
             hidden = self.dates > last_known
             for col in cols:
-                #Large positive values so filters like consumption > 0 keep the rows
+                #Large positive values so filters like consumption > 0 keep the rows; float so int columns can hold them
+                scrambled[col] = scrambled[col].astype(float)
                 scrambled.loc[hidden, col] = rng.uniform(1e3, 2e3, int(hidden.sum()))
         return scrambled
 
@@ -235,20 +261,39 @@ class ForecastValidator:
                 "nmae": float(100 * error.abs().sum() / actual.sum()),
                 "bias": float(error.mean())}
 
-    def summary(self) -> pd.DataFrame:
-        """One row per forecast, scored over all rows."""
+    def summary(self, skill: bool = False) -> pd.DataFrame:
+        """One row per forecast, scored over all rows. skill=True adds 1 - MAE / MAE of the baseline."""
         self._require_forecasts()
-        return pd.DataFrame({name: self.score(self.actual, f) for name, f in self.forecasts.items()}).T[self.METRICS]
+        table = pd.DataFrame({name: self.score(self.actual, f) for name, f in self.forecasts.items()}).T[self.METRICS]
+        return self._with_skill(table) if skill else table
 
-    def per_group(self) -> pd.DataFrame:
-        """One row per (forecast, group), e.g. per location."""
+    def per(self, by: pd.Series, skill: bool = False) -> pd.DataFrame:
+        """One row per (forecast, value of by), e.g. hour of day, month or temperature bin; by has the index of actual."""
         self._require_forecasts()
+        if not isinstance(by, pd.Series):
+            raise TypeError(f"by must be a Series, got {type(by).__name__}")
+        if not by.index.equals(self.actual.index):
+            raise ValueError("by must have the same index as actual")
+        rows = {(name, key): self.score(self.actual[idx], f[idx])
+                for name, f in self.forecasts.items()
+                for key, idx in by.groupby(by, observed=True).groups.items()}
+        table = pd.DataFrame(rows).T.rename_axis(["model", by.name or "group"])[self.METRICS]
+        return self._with_skill(table) if skill else table
+
+    def per_group(self, skill: bool = False) -> pd.DataFrame:
+        """One row per (forecast, group), e.g. per location."""
         if self.groups is None:
             raise ValueError("Pass groups to the constructor to score per group")
-        rows = {(name, group): self.score(self.actual[idx], f[idx])
-                for name, f in self.forecasts.items()
-                for group, idx in self.groups.groupby(self.groups, observed=True).groups.items()}
-        return pd.DataFrame(rows).T.rename_axis(["model", "group"])[self.METRICS]
+        return self.per(self.groups, skill).rename_axis(["model", "group"])
+
+    def _with_skill(self, table: pd.DataFrame) -> pd.DataFrame:
+        """Add skill = 1 - MAE / MAE of the baseline on the same rows: 0 for the baseline, above 0 when better."""
+        if self.baseline is None:
+            raise ValueError("skill needs a forecast added with baseline=True")
+        baseline_mae = table.loc[self.baseline, "mae"]
+        if isinstance(table.index, pd.MultiIndex):
+            baseline_mae = baseline_mae.reindex(table.index.get_level_values(1)).to_numpy()
+        return table.assign(skill=1 - table["mae"] / baseline_mae)
 
     def save_to_json(self, path: str | Path) -> None:
         """Write the scores of this run to path: summary per model and, with groups, scores per model and group."""
@@ -258,9 +303,82 @@ class ForecastValidator:
             results["per_group"] = {name: {str(group): self.score(self.actual[idx], f[idx])
                                            for group, idx in self.groups.groupby(self.groups, observed=True).groups.items()}
                                     for name, f in self.forecasts.items()}
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(results, indent=2))
+        _write_json(path, results)
+
+    def save_predictions(self, path: str | Path) -> None:
+        """Write actual, groups and every forecast per row, so error_analysis.ipynb can compare models hour by hour.
+
+        The row labels are kept, so time, temperature etc. can be joined back from MakeTrainingData().df.
+        """
+        self._require_forecasts()
+        table = pd.DataFrame({"actual": self.actual, **self.forecasts})
+        if self.groups is not None:
+            table.insert(1, "group", self.groups.astype(str))
+        _write_json(path, {"baseline": self.baseline, "forecasts": list(self.forecasts),
+                           "rows": table.to_dict(orient="split")})
+
+    @classmethod
+    def load_predictions(cls, path: str | Path) -> ForecastValidator:
+        """Rebuild a validator saved with save_predictions."""
+        saved = json.loads(Path(path).read_text())
+        table = pd.DataFrame(**saved["rows"])
+        validator = cls(table["actual"], groups=table["group"] if "group" in table else None)
+        for name in saved["forecasts"]:
+            validator.add(name, table[name], baseline=name == saved["baseline"])
+        return validator
+
+    def plot_metric_by(self, by: pd.Series, metric: str = "nmae", no_baseline: bool = False,
+                       ax: plt.Axes | None = None) -> plt.Axes:
+        """One line per forecast: metric against the values of by (e.g. hour of day). Returns the axes so figures can be combined and saved."""
+        labels = {"mae": "MAE [MW]", "rmse": "RMSE [MW]", "nmae": "nMAE [%]", "bias": "Bias [MW]",
+                  "skill": "Skill vs baseline [%]"}
+        if metric not in labels:
+            raise ValueError(f"metric must be one of {list(labels)}, got {metric!r}")
+        forecasts = self._plotted(no_baseline)
+        scores = self.per(by, skill=metric == "skill")[metric]
+        #unstack sorts the values of by; reindex keeps their own order (e.g. the categories of an ordered Categorical)
+        table = scores.unstack(0).reindex(scores.index.get_level_values(1).unique())[list(forecasts)]
+        if metric == "skill":
+            table *= 100
+        if not pd.api.types.is_numeric_dtype(table.index):
+            table.index = table.index.astype(str)
+        ax = ax if ax is not None else plt.subplots(figsize=(6, 3.5), layout="constrained")[1]
+        table.plot(ax=ax, marker="o", markersize=3, color=self.colors(forecasts))
+        ax.legend(title=None)
+        ax.set_xlabel(by.name or "")
+        ax.set_ylabel(labels[metric])
+        return ax
+
+    def colors(self, names: Iterable[str]) -> list[str]:
+        """The same colour for a forecast in every figure, also when the baseline is left out."""
+        order = list(self.forecasts)
+        return [f"C{order.index(name)}" for name in names]
+
+    def plot_rolling_bias(self, time: pd.Series, days: int = 7, no_baseline: bool = True) -> plt.Figure:
+        """Rolling mean error per group as % of consumption, one panel per forecast.
+
+        A curve that stays away from 0 for weeks is a level shift, e.g. customers gained or lost, that the
+        consumption lags have not caught up with yet.
+        """
+        forecasts = self._plotted(no_baseline)
+        if not isinstance(time, pd.Series) or not time.index.equals(self.actual.index):
+            raise ValueError("time must be a Series with the same index as actual")
+        groups = self.groups if self.groups is not None else pd.Series("all", index=self.actual.index)
+        day = time.dt.floor("D")
+        fig, axes = plt.subplots(1, len(forecasts), sharey=True, squeeze=False,
+                                 figsize=(6 * len(forecasts), 3.5), layout="constrained")
+        for ax, (name, forecast) in zip(axes[0], forecasts.items()):
+            #Summed per day before dividing, so the bias is weighted by consumption like nMAE
+            daily = pd.DataFrame({"error": forecast - self.actual, "actual": self.actual}).groupby(
+                [groups.astype(str).rename("group"), day], observed=True).sum()
+            rolling = daily.unstack("group").rolling(days, min_periods=days).sum()
+            (100 * rolling["error"] / rolling["actual"]).plot(ax=ax, linewidth=1)
+            ax.legend(title=groups.name if isinstance(groups.name, str) else None, fontsize="small")
+            ax.axhline(0, color="#52514e", linewidth=0.8)
+            ax.set_title(name)
+            ax.set_xlabel("Date")
+        axes[0, 0].set_ylabel(f"{days}-day bias [% of consumption]")
+        return fig
 
     def _require_forecasts(self) -> None:
         if not self.forecasts:
@@ -328,6 +446,71 @@ class ForecastValidator:
             ax.set_xlabel("Date")
         axes[0, 0].legend(loc="upper right")
         plt.show()
+
+
+def _mae(actual: pd.Series, forecast: np.ndarray) -> float:
+    return float(np.mean(np.abs(np.asarray(forecast) - actual.to_numpy())))
+
+
+def permutation_importance(predict: Callable[[pd.DataFrame], np.ndarray], X: pd.DataFrame, actual: pd.Series,
+                           feature_groups: dict[str, Sequence[str]], n_repeats: int = 5, seed: int = 0) -> pd.DataFrame:
+    """Increase in MAE when the columns of one feature group are shuffled, for any model predict(X) -> forecast.
+
+    The columns of a group are shuffled together (a window keeps its shape) and only within each location, so
+    the shuffled values keep the location's level and the importance is not just "which location is this".
+    Returns mae_increase (MW) and relative_increase (% of the unshuffled MAE), mean and std over n_repeats.
+    """
+    if not X.index.equals(actual.index):
+        raise ValueError("X and actual must have the same index")
+    missing = {col for cols in feature_groups.values() for col in cols} - set(X.columns)
+    if missing:
+        raise ValueError(f"X has no columns {sorted(missing)}")
+    rng = np.random.default_rng(seed)
+    base = _mae(actual, predict(X))
+    positions = [np.flatnonzero(X["location"].to_numpy() == location) for location in X["location"].unique()]
+    rows = {}
+    for name, cols in feature_groups.items():
+        increases = []
+        for _ in range(n_repeats):
+            order = np.arange(len(X))
+            for pos in positions:
+                order[pos] = rng.permutation(pos)
+            shuffled = X.copy()
+            #iloc + set_axis keeps the dtypes (bool, category), which a numpy round trip would turn into object
+            shuffled[list(cols)] = X[list(cols)].iloc[order].set_axis(X.index)
+            increases.append(_mae(actual, predict(shuffled)) - base)
+        rows[name] = {"mae_increase": np.mean(increases), "mae_increase_std": np.std(increases),
+                      "relative_increase": 100 * np.mean(increases) / base}
+    return pd.DataFrame(rows).T.rename_axis("feature_group")
+
+
+def temperature_noise_sensitivity(predict: Callable[[pd.DataFrame], np.ndarray], X: pd.DataFrame, actual: pd.Series,
+                                  days: pd.Series, noise_cols: Sequence[str], in_target_day: pd.DataFrame | None = None,
+                                  sigmas: Sequence[float] = (0, 0.5, 1, 2, 3), n_repeats: int = 3,
+                                  seed: int = 0) -> pd.DataFrame:
+    """MAE when the temperature forecast for the target day has an error with standard deviation sigma (°C).
+
+    Our temperature is close to the real weather, but a real day-ahead forecast is off by 1-2 °C. One error is drawn
+    per location and day, as forecast errors are correlated within a day, and added to noise_cols. in_target_day
+    (bool, same shape as X[noise_cols]) limits the noise to the cells that lie in the target day, e.g. the newest
+    part of a temperature window; the older part is in the past and therefore known.
+    """
+    if not X.index.equals(actual.index) or not days.index.equals(X.index):
+        raise ValueError("X, actual and days must have the same index")
+    mask = np.ones((len(X), len(noise_cols))) if in_target_day is None else in_target_day.to_numpy(dtype=float)
+    day_id = X.groupby([X["location"].astype(str), days], observed=True).ngroup().to_numpy()
+    rng = np.random.default_rng(seed)
+    rows = {}
+    for sigma in sigmas:
+        maes = []
+        for _ in range(n_repeats if sigma > 0 else 1):
+            noisy = X.copy()
+            noise = rng.normal(0, sigma, day_id.max() + 1)[day_id] if sigma > 0 else np.zeros(len(X))
+            noisy[list(noise_cols)] = X[list(noise_cols)].to_numpy() + noise[:, None] * mask
+            maes.append(_mae(actual, predict(noisy)))
+        rows[float(sigma)] = {"mae": np.mean(maes), "mae_std": np.std(maes)}
+    table = pd.DataFrame(rows).T.rename_axis("sigma")
+    return table.assign(relative_increase=100 * (table["mae"] / table.loc[0.0, "mae"] - 1))
 
 
 class FeatureTarget(TypedDict):
@@ -399,3 +582,20 @@ class MakeTrainingData:
         LeakageChecker.check_split(train["date"], test["date"])
         return {name: {"feature": part[self.feature_cols], "target": part[self.target_col]}
                 for name, part in (("train", train), ("test", test))}
+
+    @staticmethod
+    def validation_windows(dates: pd.Series, n_windows: int = 3, days: int = 14) -> list[tuple[pd.Index, pd.Index]]:
+        """(fit, validation) row labels for n_windows consecutive windows of days at the end of dates (the training period).
+
+        Each window is fitted on everything up to DELAY_DAYS + 1 days before it, like the train/test split.
+        The windows end in mid-January, so they include Christmas and New Year, which the test period does not.
+        """
+        windows = []
+        for k in reversed(range(n_windows)):
+            val_end = dates.max() - pd.Timedelta(days=days * k)
+            val_start = val_end - pd.Timedelta(days=days - 1)
+            fit = dates[dates <= val_start - pd.Timedelta(days=DELAY_DAYS + 1)]
+            val = dates[(dates >= val_start) & (dates <= val_end)]
+            LeakageChecker.check_split(fit, val)
+            windows.append((fit.index, val.index))
+        return windows
