@@ -7,6 +7,7 @@ Weather is a forecast, so values up to and including day T are known.
 
 Usage:
     data = MakeTrainingData().get_train_test(0.8)      #data["train"]["feature"], data["train"]["target"]
+    trainer = MakeTrainingData(window_hours=168)       #adds sliding windows of 168 hours
     checker = LeakageChecker(df)                       #raw data: time (UTC), location, consumption, temperature
     checker.check_features(lambda raw: FeatureBuilder(raw).add_lag_features((6, 7)).df)
     LeakageChecker.check_split(train["date"], test["date"])
@@ -36,6 +37,9 @@ TIMEZONES = {"helsingfors": "Europe/Helsinki"}
 DEFAULT_TIMEZONE = "Europe/Oslo"
 KEY_COLS = ["location", "time"]
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+#Consumption is known up to the end of local day T-6. 145 h before any hour of day T is on or before that day,
+#also across the October DST change, where 144 h before 23:00 is 00:00 on day T-5
+WINDOW_START_LAG = 145
 
 
 class LeakageError(AssertionError):
@@ -335,20 +339,48 @@ class MakeTrainingData:
     """Loads the prepared dataset and splits it chronologically, matching what is known at forecast time.
 
     Features are every column except time, date, the target and exclude_columns: weather for day T itself
-    and consumption lags of at least DELAY_DAYS + 1 days.
+    and consumption lags of at least DELAY_DAYS + 1 days. window_hours > 0 also adds sliding windows of
+    consumption and temperature (see add_sliding_window); their column names, oldest hour first, are in
+    consumption_window and temperature_window.
     """
 
     def __init__(self, from_csv: str | Path = DATA_DIR / "dataset.csv",
-                 exclude_columns: Iterable[str] = (), target_col: str = "consumption") -> None:
+                 exclude_columns: Iterable[str] = (), target_col: str = "consumption", window_hours: int = 0) -> None:
         if isinstance(exclude_columns, str):
             raise TypeError("exclude_columns must be a list of column names, not a single string")
+        if not isinstance(window_hours, int) or window_hours < 0:
+            raise TypeError("window_hours must be a non-negative int")
         self.df = pd.read_csv(from_csv, parse_dates=["time", "date"])
         if target_col not in self.df.columns:
             raise ValueError(f"{from_csv} has no column {target_col!r}")
         self.df["location"] = self.df["location"].astype("category")
+        self.consumption_window, self.temperature_window = self.window_columns(window_hours)
+        if window_hours:
+            self.df = self.add_sliding_window(self.df, window_hours)
         self.target_col = target_col
         self.feature_cols = [c for c in self.df.columns if c not in {"time", "date", target_col, *exclude_columns}]
         LeakageChecker.check_feature_names(self.feature_cols, target_col)
+
+    @staticmethod
+    def window_columns(hours: int) -> tuple[list[str], list[str]]:
+        """Names of the consumption and temperature window columns, oldest hour first."""
+        return ([f"consumption_lag_{k}h" for k in reversed(range(WINDOW_START_LAG, WINDOW_START_LAG + hours))],
+                [f"temperature_lag_{k}h" for k in reversed(range(hours))])
+
+    @staticmethod
+    def add_sliding_window(df: pd.DataFrame, hours: int) -> pd.DataFrame:
+        """Add windows of length hours: the consumption ending WINDOW_START_LAG hours before each row and
+        the temperature forecast ending at the row itself."""
+        steps = df.groupby("location", observed=True)["time"].diff().dropna()
+        #Shifting k rows is only a lag of k hours when every location has one row per hour, sorted by time
+        if not (steps == pd.Timedelta(hours=1)).all():
+            raise ValueError("Each location must have exactly one row per hour, sorted by time")
+        by_location = df.groupby("location", observed=True)
+        consumption, temperature = MakeTrainingData.window_columns(hours)
+        windows = {col: by_location["consumption"].shift(WINDOW_START_LAG + hours - 1 - i)
+                   for i, col in enumerate(consumption)}
+        windows |= {col: by_location["temperature"].shift(hours - 1 - i) for i, col in enumerate(temperature)}
+        return pd.concat([df, pd.DataFrame(windows)], axis=1)
 
     def get_train_test(self, split_percent: float = 0.8) -> dict[str, FeatureTarget]:
         """Train on the first split_percent of the period and test on the rest.
