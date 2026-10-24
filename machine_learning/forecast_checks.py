@@ -173,13 +173,14 @@ class LeakageChecker:
 
 
 class ForecastValidator:
-    """Scores forecasts against the actual consumption with MAE, RMSE, nMAE and bias.
+    """Scores forecasts against the actual consumption with MAE, RMSE, nMAE, bias and nBias.
 
     nMAE = 100 * sum|error| / sum(actual): the share of consumption that ends up as imbalance,
     which makes locations of different size comparable. Bias = mean(forecast - actual), positive = overforecast.
+    nBias = 100 * sum(error) / sum(actual): the bias as a share of consumption, comparable like nMAE.
     """
 
-    METRICS = ["mae", "rmse", "nmae", "bias"]
+    METRICS = ["mae", "rmse", "nmae", "bias", "nbias"]
 
     def __init__(self, actual: pd.Series, groups: pd.Series | None = None) -> None:
         if not isinstance(actual, pd.Series):
@@ -229,7 +230,8 @@ class ForecastValidator:
         return {"mae": float(error.abs().mean()),
                 "rmse": float(np.sqrt((error ** 2).mean())),
                 "nmae": float(100 * error.abs().sum() / actual.sum()),
-                "bias": float(error.mean())}
+                "bias": float(error.mean()),
+                "nbias": float(100 * error.sum() / actual.sum())}
 
     def summary(self) -> pd.DataFrame:
         """One row per forecast, scored over all rows."""
@@ -254,9 +256,82 @@ class ForecastValidator:
             results["per_group"] = {name: {str(group): self.score(self.actual[idx], f[idx])
                                            for group, idx in self.groups.groupby(self.groups, observed=True).groups.items()}
                                     for name, f in self.forecasts.items()}
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(results, indent=2))
+        _write_json(path, results)
+
+    def save_predictions(self, path: str | Path) -> None:
+        """Write actual, groups and every forecast per row, so error_analysis.ipynb can compare models hour by hour.
+
+        The row labels are kept, so time, temperature etc. can be joined back from MakeTrainingData().df.
+        """
+        self._require_forecasts()
+        table = pd.DataFrame({"actual": self.actual, **self.forecasts})
+        if self.groups is not None:
+            table.insert(1, "group", self.groups.astype(str))
+        _write_json(path, {"baseline": self.baseline, "forecasts": list(self.forecasts),
+                           "rows": table.to_dict(orient="split")})
+
+    @classmethod
+    def load_predictions(cls, path: str | Path) -> ForecastValidator:
+        """Rebuild a validator saved with save_predictions."""
+        saved = json.loads(Path(path).read_text())
+        table = pd.DataFrame(**saved["rows"])
+        validator = cls(table["actual"], groups=table["group"] if "group" in table else None)
+        for name in saved["forecasts"]:
+            validator.add(name, table[name], baseline=name == saved["baseline"])
+        return validator
+
+    def plot_metric_by(self, by: pd.Series, metric: str = "nmae", no_baseline: bool = False,
+                       ax: plt.Axes | None = None) -> plt.Axes:
+        """One line per forecast: metric against the values of by (e.g. hour of day). Returns the axes so figures can be combined and saved."""
+        labels = {"mae": "MAE [MW]", "rmse": "RMSE [MW]", "nmae": "nMAE [%]", "bias": "Bias [MW]",
+                  "nbias": "Bias [%]", "skill": "Skill vs baseline [%]"}
+        if metric not in labels:
+            raise ValueError(f"metric must be one of {list(labels)}, got {metric!r}")
+        forecasts = self._plotted(no_baseline)
+        scores = self.per(by, skill=metric == "skill")[metric]
+        #unstack sorts the values of by; reindex keeps their own order (e.g. the categories of an ordered Categorical)
+        table = scores.unstack(0).reindex(scores.index.get_level_values(1).unique())[list(forecasts)]
+        if metric == "skill":
+            table *= 100
+        if not pd.api.types.is_numeric_dtype(table.index):
+            table.index = table.index.astype(str)
+        ax = ax if ax is not None else plt.subplots(figsize=(6, 3.5), layout="constrained")[1]
+        table.plot(ax=ax, marker="o", markersize=3, color=self.colors(forecasts))
+        ax.legend(title=None)
+        ax.set_xlabel(by.name or "")
+        ax.set_ylabel(labels[metric])
+        return ax
+
+    def colors(self, names: Iterable[str]) -> list[str]:
+        """The same colour for a forecast in every figure, also when the baseline is left out."""
+        order = list(self.forecasts)
+        return [f"C{order.index(name)}" for name in names]
+
+    def plot_rolling_bias(self, time: pd.Series, days: int = 7, no_baseline: bool = True) -> plt.Figure:
+        """Rolling mean error per group as % of consumption, one panel per forecast.
+
+        A curve that stays away from 0 for weeks is a level shift, e.g. customers gained or lost, that the
+        consumption lags have not caught up with yet.
+        """
+        forecasts = self._plotted(no_baseline)
+        if not isinstance(time, pd.Series) or not time.index.equals(self.actual.index):
+            raise ValueError("time must be a Series with the same index as actual")
+        groups = self.groups if self.groups is not None else pd.Series("all", index=self.actual.index)
+        day = time.dt.floor("D")
+        fig, axes = plt.subplots(1, len(forecasts), sharey=True, squeeze=False,
+                                 figsize=(6 * len(forecasts), 3.5), layout="constrained")
+        for ax, (name, forecast) in zip(axes[0], forecasts.items()):
+            #Summed per day before dividing, so the bias is weighted by consumption like nMAE
+            daily = pd.DataFrame({"error": forecast - self.actual, "actual": self.actual}).groupby(
+                [groups.astype(str).rename("group"), day], observed=True).sum()
+            rolling = daily.unstack("group").rolling(days, min_periods=days).sum()
+            (100 * rolling["error"] / rolling["actual"]).plot(ax=ax, linewidth=1)
+            ax.legend(title=groups.name if isinstance(groups.name, str) else None, fontsize="small")
+            ax.axhline(0, color="#52514e", linewidth=0.8)
+            ax.set_title(name)
+            ax.set_xlabel("Date")
+        axes[0, 0].set_ylabel(f"{days}-day bias [% of consumption]")
+        return fig
 
     def _require_forecasts(self) -> None:
         if not self.forecasts:

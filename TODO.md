@@ -8,6 +8,7 @@
     https://medium.com/@itsmesut/comparing-7-machine-learning-models-for-electricity-consumption-forecasting-a-practical-2cc4633e0de0
 - [ ]  kilder for valg av baseline -> seasonal naive model
     https://medium.com/@soulawalid/where-patterns-repeat-and-the-future-quietly-echoes-the-past-bb24d44a53da
+    https://otexts.com/fpp2/toolbox.html#sec-simple-methods
 - [ ]  begrunne alle valg relativt tydelig
     - [ ]  MAE - as cost grows linearly with error (assumption)
     - [ ]  tydeligere argumentasjon for modellvalg
