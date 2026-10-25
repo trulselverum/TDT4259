@@ -18,6 +18,7 @@ SEED = 42
 MAX_EPOCHS = 40
 PATIENCE = 5
 N_SEEDS = 5
+GRAD_CLIP = 1.0
 #Weather for the target hour. rain is left out (it is precipitation minus snow), and so is weekend (weekday covers it)
 #Precipitation and snowfall are mostly zero with rare large values, so they get log(1 + x) instead of standardizing:
 #snowfall is almost never above zero before December, so its training std is tiny and January snow would be 30+ std out
@@ -122,6 +123,8 @@ def train_model(params: dict, X: tuple[torch.Tensor, torch.Tensor], y: torch.Ten
         for batch in torch.randperm(len(y)).split(params["batch_size"]):
             optimizer.zero_grad()
             loss_fn(model(sequence[batch], static[batch]), y[batch]).backward()
+            #Clipping keeps one large step from pushing every ReLU of the head below zero (a dead, constant network)
+            nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
             optimizer.step()
         if val is None:
             continue
@@ -134,11 +137,30 @@ def train_model(params: dict, X: tuple[torch.Tensor, torch.Tensor], y: torch.Ten
     return model, best_mae, best_epoch
 
 
+def is_collapsed(model: nn.Module, X: tuple[torch.Tensor, torch.Tensor]) -> bool:
+    """True when the network gives the same forecast for every row, e.g. when every ReLU of the head has died."""
+    return predict(model, X).std() < 1e-4
+
+
 def ensemble_fit(params: dict, epochs: int, fit_data: pd.DataFrame, scaler: WindowScaler,
                  model_class: type = WindowCNN) -> list[nn.Module]:
-    """N_SEEDS networks that differ only in seed. scaler must be fitted on fit_data."""
+    """N_SEEDS networks that differ only in seed. scaler must be fitted on fit_data.
+
+    A collapsed network would pull the mean forecast towards its constant, so it is replaced by one with the next seed.
+    """
     X, y = scaler.X(fit_data), scaler.y(fit_data)
-    return [train_model(params, X, y, epochs, seed=SEED + i, model_class=model_class)[0] for i in range(N_SEEDS)]
+    models, skipped = [], []
+    for seed in range(SEED, SEED + 2 * N_SEEDS):
+        model = train_model(params, X, y, epochs, seed=seed, model_class=model_class)[0]
+        if is_collapsed(model, X):
+            skipped.append(seed)
+            continue
+        models.append(model)
+        if len(models) == N_SEEDS:
+            if skipped:
+                print(f"Collapsed networks replaced, seeds {skipped}")
+            return models
+    raise RuntimeError(f"Only {len(models)} of {N_SEEDS} networks trained without collapsing (collapsed seeds {skipped})")
 
 
 def ensemble_predict(models: list[nn.Module], pred_data: pd.DataFrame, scaler: WindowScaler) -> np.ndarray:
