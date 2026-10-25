@@ -29,6 +29,7 @@ Usage:
     validator.plot_rolling_bias(test["time"])
     permutation_importance(model.predict, X_test, y_test, {"temperature": ["temperature"]})
     temperature_noise_sensitivity(model.predict, X_test, y_test, test["date"], ["temperature"])
+    paired_bootstrap(y_test, pred_a, pred_b, test["date"], test["location"])   #is a better than b per location?
     MakeTrainingData.validation_windows(train["date"])  #3 x 2-week (fit, validation) windows at the end of training
 """
 from __future__ import annotations
@@ -511,6 +512,28 @@ def temperature_noise_sensitivity(predict: Callable[[pd.DataFrame], np.ndarray],
         rows[float(sigma)] = {"mae": np.mean(maes), "mae_std": np.std(maes)}
     table = pd.DataFrame(rows).T.rename_axis("sigma")
     return table.assign(relative_increase=100 * (table["mae"] / table.loc[0.0, "mae"] - 1))
+
+
+def paired_bootstrap(actual: pd.Series, a: pd.Series, b: pd.Series, days: pd.Series, groups: pd.Series,
+                     n_boot: int = 2000, seed: int = 0) -> pd.DataFrame:
+    """MAE of forecast a minus MAE of forecast b per group, with a 95 % interval; negative = a is better.
+
+    Whole days are resampled, as the errors within a day are correlated (one temperature forecast, one weekday);
+    resampling single hours would make the interval too narrow. The difference is significant when the interval excludes 0.
+    """
+    for name, series in (("a", a), ("b", b), ("days", days), ("groups", groups)):
+        if not isinstance(series, pd.Series) or not series.index.equals(actual.index):
+            raise ValueError(f"{name} must be a Series with the same index as actual")
+    rng = np.random.default_rng(seed)
+    difference = (a - actual).abs() - (b - actual).abs()
+    rows = {}
+    for group, diff in difference.groupby(groups, observed=True):
+        daily = diff.groupby(days[diff.index]).agg(["sum", "count"])
+        pick = rng.integers(0, len(daily), (n_boot, len(daily)))
+        boot = daily["sum"].to_numpy()[pick].sum(axis=1) / daily["count"].to_numpy()[pick].sum(axis=1)
+        low, high = np.quantile(boot, [0.025, 0.975])
+        rows[group] = {"mae_difference": diff.mean(), "ci_low": low, "ci_high": high, "significant": not low <= 0 <= high}
+    return pd.DataFrame.from_dict(rows, orient="index").rename_axis(groups.name or "group")
 
 
 class FeatureTarget(TypedDict):

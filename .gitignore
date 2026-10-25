@@ -1,1 +1,3 @@
 *venv*
+#Saved networks (neural_network.ipynb); they are rebuilt by re-running the notebook
+machine_learning/results/*.pt

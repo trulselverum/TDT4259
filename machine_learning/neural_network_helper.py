@@ -86,23 +86,33 @@ class WindowCNN(nn.Module):
         self.head = nn.Sequential(nn.Linear(n_conv_out + n_static, hidden), nn.ReLU(), nn.Dropout(dropout),
                                   nn.Linear(hidden, 1))
 
+    @classmethod
+    def from_params(cls, params: dict, window: int, n_static: int) -> WindowCNN:
+        return cls(window, n_static, params["n_conv"], params["channels"], params["kernel"], params["hidden"],
+                   params["dropout"])
+
     def forward(self, sequence: torch.Tensor, static: torch.Tensor) -> torch.Tensor:
         return self.head(torch.cat([self.conv(sequence), static], dim=1)).squeeze(-1)
 
 
-def predict(model: WindowCNN, X: tuple[torch.Tensor, torch.Tensor]) -> np.ndarray:
+def predict(model: nn.Module, X: tuple[torch.Tensor, torch.Tensor], chunk: int = 2048) -> np.ndarray:
+    """Forecast in chunks of rows: an LSTM keeps every step of the window, which for the whole test period needs several GB."""
     model.eval()
+    sequence, static = X
     with torch.no_grad():
-        return model(*X).numpy()
+        return np.concatenate([model(sequence[i:i + chunk], static[i:i + chunk]).numpy()
+                               for i in range(0, len(static), chunk)])
 
 
 def train_model(params: dict, X: tuple[torch.Tensor, torch.Tensor], y: torch.Tensor, epochs: int,
-                val: tuple | None = None, seed: int = SEED) -> tuple[WindowCNN, float, int]:
-    """Train with L1 loss (= MAE). With val = (X_val, y_val in MW, scaler, val data), stop early and return the best epoch."""
+                val: tuple | None = None, seed: int = SEED, model_class: type = WindowCNN) -> tuple[nn.Module, float, int]:
+    """Train with L1 loss (= MAE). With val = (X_val, y_val in MW, scaler, val data), stop early and return the best epoch.
+
+    model_class is any network with from_params(params, window, n_static) and forward(sequence, static), e.g. WindowLSTM.
+    """
     torch.manual_seed(seed)
     sequence, static = X
-    model = WindowCNN(sequence.shape[2], static.shape[1], params["n_conv"], params["channels"], params["kernel"],
-                      params["hidden"], params["dropout"])
+    model = model_class.from_params(params, sequence.shape[2], static.shape[1])
     optimizer = torch.optim.AdamW(model.parameters(), lr=params["lr"], weight_decay=params["weight_decay"])
     loss_fn = nn.L1Loss()
     best_mae, best_epoch = np.inf, 0
@@ -124,22 +134,44 @@ def train_model(params: dict, X: tuple[torch.Tensor, torch.Tensor], y: torch.Ten
     return model, best_mae, best_epoch
 
 
-def ensemble_fit(params: dict, epochs: int, fit_data: pd.DataFrame, scaler: WindowScaler) -> list[WindowCNN]:
+def ensemble_fit(params: dict, epochs: int, fit_data: pd.DataFrame, scaler: WindowScaler,
+                 model_class: type = WindowCNN) -> list[nn.Module]:
     """N_SEEDS networks that differ only in seed. scaler must be fitted on fit_data."""
     X, y = scaler.X(fit_data), scaler.y(fit_data)
-    return [train_model(params, X, y, epochs, seed=SEED + i)[0] for i in range(N_SEEDS)]
+    return [train_model(params, X, y, epochs, seed=SEED + i, model_class=model_class)[0] for i in range(N_SEEDS)]
 
 
-def ensemble_predict(models: list[WindowCNN], pred_data: pd.DataFrame, scaler: WindowScaler) -> np.ndarray:
+def ensemble_predict(models: list[nn.Module], pred_data: pd.DataFrame, scaler: WindowScaler) -> np.ndarray:
     """Mean forecast in MW of the networks; averaging removes much of the seed-to-seed variance."""
     X_pred = scaler.X(pred_data)
     return scaler.to_mw(pred_data, np.mean([predict(model, X_pred) for model in models], axis=0))
 
 
 def ensemble_forecast(params: dict, epochs: int, fit_data: pd.DataFrame, pred_data: pd.DataFrame,
-                      scaler: WindowScaler) -> np.ndarray:
+                      scaler: WindowScaler, model_class: type = WindowCNN) -> np.ndarray:
     """ensemble_fit on fit_data, then ensemble_predict on pred_data."""
-    return ensemble_predict(ensemble_fit(params, epochs, fit_data, scaler), pred_data, scaler)
+    return ensemble_predict(ensemble_fit(params, epochs, fit_data, scaler, model_class), pred_data, scaler)
+
+
+def load_ensemble(state_dicts: list[dict], params: dict, window: int, n_static: int,
+                  model_class: type = WindowCNN) -> list[nn.Module]:
+    """Rebuild networks saved with model.state_dict() (see neural_network.ipynb)."""
+    models = []
+    for state in state_dicts:
+        model = model_class.from_params(params, window, n_static)
+        model.load_state_dict(state)
+        models.append(model.eval())
+    return models
+
+
+def embed(model: WindowCNN, X: tuple[torch.Tensor, torch.Tensor], chunk: int = 2048) -> torch.Tensor:
+    """Input of the dense head: the output of the convolutions next to the static inputs, so model.head(embed(model, X))
+    is the forecast. The convolutions have no dropout, so this can be computed once and reused to train new heads."""
+    model.eval()
+    sequence, static = X
+    with torch.no_grad():
+        conv = torch.cat([model.conv(sequence[i:i + chunk]) for i in range(0, len(static), chunk)])
+    return torch.cat([conv, static], dim=1)
 
 
 def target_day_temperature(data: pd.DataFrame, temperature_window: list[str]) -> pd.DataFrame:
