@@ -1,0 +1,97 @@
+{
+  "outage_share": 0.2,
+  "seed": 0,
+  "scenarios": {
+    "Lag 7 d missing": {
+      "No outage (report)": 0.3794,
+      "XGBoost, NaN handled natively": 0.7015,
+      "Mean imputation": 0.4043,
+      "KNN imputation (k=5)": 0.3937,
+      "MICE": 0.3845,
+      "MICE, ExtraTrees": 0.3836,
+      "Multiple imputation (m=5)": 0.3848,
+      "MICE + fallback (report)": 0.3845,
+      "MICE + fallback, no-lag model": 0.3845,
+      "Trained with outages": 0.4318,
+      "Trained with outages + indicators": 0.4253,
+      "One model per pattern": 0.3777,
+      "Mean of available lags": 0.4902,
+      "Baseline (same hour last week)": 2.7882
+    },
+    "Last available day missing": {
+      "No outage (report)": 0.3794,
+      "XGBoost, NaN handled natively": 2.7734,
+      "Mean imputation": 2.5632,
+      "KNN imputation (k=5)": 0.5709,
+      "MICE": 0.3979,
+      "MICE, ExtraTrees": 0.3718,
+      "Multiple imputation (m=5)": 0.3975,
+      "MICE + fallback (report)": 0.3979,
+      "MICE + fallback, no-lag model": 0.3979,
+      "Trained with outages": 0.3975,
+      "Trained with outages + indicators": 0.3921,
+      "One model per pattern": 0.3854,
+      "Mean of available lags": 0.5012,
+      "Baseline (same hour last week)": 0.5673
+    },
+    "All consumption features missing": {
+      "No outage (report)": 0.3794,
+      "XGBoost, NaN handled natively": 3.9164,
+      "Mean imputation": 3.0539,
+      "KNN imputation (k=5)": 2.574,
+      "MICE": 2.9859,
+      "MICE, ExtraTrees": 2.9211,
+      "Multiple imputation (m=5)": 2.9436,
+      "MICE + fallback (report)": 2.7882,
+      "MICE + fallback, no-lag model": 0.8881,
+      "Trained with outages": 1.6714,
+      "Trained with outages + indicators": 1.6493,
+      "One model per pattern": 0.8881,
+      "Mean of available lags": 2.7882,
+      "Baseline (same hour last week)": 2.7882
+    },
+    "Whole weather forecast missing": {
+      "No outage (report)": 0.3794,
+      "XGBoost, NaN handled natively": 0.6152,
+      "Mean imputation": 0.6346,
+      "KNN imputation (k=5)": 0.6885,
+      "MICE": 0.4414,
+      "MICE, ExtraTrees": 0.4414,
+      "Multiple imputation (m=5)": 0.4414,
+      "MICE + fallback (report)": 0.4414,
+      "MICE + fallback, no-lag model": 0.4414,
+      "Trained with outages": 0.5747,
+      "Trained with outages + indicators": 0.5958,
+      "One model per pattern": 0.4414,
+      "Mean of available lags": 0.4978,
+      "Baseline (same hour last week)": 0.5673
+    }
+  },
+  "threshold": {
+    "1": {
+      "MICE + model": 0.3829,
+      "One model per pattern": 0.487,
+      "Weather and calendar model": 0.8881
+    },
+    "2": {
+      "MICE + model": 0.3923,
+      "One model per pattern": 0.7443,
+      "Weather and calendar model": 0.8881
+    },
+    "3": {
+      "MICE + model": 0.3933,
+      "One model per pattern": 0.8359,
+      "Weather and calendar model": 0.8881
+    },
+    "4": {
+      "MICE + model": 0.4047,
+      "One model per pattern": 0.8881,
+      "Weather and calendar model": 0.8881
+    },
+    "5": {
+      "MICE + model": 2.9859,
+      "One model per pattern": 0.8881,
+      "Weather and calendar model": 0.8881
+    }
+  }
+}
