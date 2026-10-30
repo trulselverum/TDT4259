@@ -1,0 +1,13 @@
+% Caption: Test-set MAE and bias with all features and with the reduced feature set (n = 10 495 hours).
+\begin{tabular}{lrrrrr}
+\toprule
+ & \multicolumn{3}{c}{Test MAE [MW]} & \multicolumn{2}{c}{Bias [MW]} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-6}
+Model & All features & Reduced set & $\Delta$ [\%] & All features & Reduced set \\
+\midrule
+XGBoost & 0.334 & 0.339 & $+1.4$ & 0.153 & 0.162 \\
+CNN & 0.257 & 0.294 & $+14.4$ & $-$0.002 & 0.180 \\
+LSTM & 0.284 & 0.286 & $+0.8$ & 0.008 & $-$0.047 \\
+Local heads & 0.295 & 0.290 & $-1.8$ & $-$0.181 & 0.150 \\
+\bottomrule
+\end{tabular}

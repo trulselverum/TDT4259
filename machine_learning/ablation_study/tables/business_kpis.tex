@@ -1,0 +1,14 @@
+% Caption: Total absolute imbalance and imbalance cost exposure on the test period, all six price areas, with all features and with the reduced feature set.
+\begin{tabular}{lrrrrr}
+\toprule
+ & \multicolumn{3}{c}{$I$ [MWh]} & \multicolumn{2}{c}{Cost [EUR]} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-6}
+Model & All features & Reduced set & $\Delta$ [\%] & All features & Reduced set \\
+\midrule
+Same hour last week (baseline) & 5,192.1 & 5,192.1 & $+0.0$ & 76,760 & 76,760 \\
+XGBoost & 3,504.3 & 3,553.4 & $+1.4$ & 50,853 & 50,611 \\
+CNN & 2,697.4 & 3,084.6 & $+14.4$ & 43,747 & 54,281 \\
+LSTM & 2,979.0 & 3,003.1 & $+0.8$ & 48,137 & 44,754 \\
+Local heads & 3,097.5 & 3,041.8 & $-1.8$ & 47,899 & 46,771 \\
+\bottomrule
+\end{tabular}

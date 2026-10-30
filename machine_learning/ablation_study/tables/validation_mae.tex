@@ -1,0 +1,13 @@
+% Caption: Validation MAE before and after removing the five features flagged by the ablation study.
+\begin{tabular}{lrrr}
+\toprule
+ & \multicolumn{3}{c}{Validation MAE [MW]} \\
+\cmidrule(lr){2-4}
+Model & All features & Reduced set & $\Delta$ [\%] \\
+\midrule
+XGBoost & 0.625 & 0.591 & $-5.4$ \\
+CNN & 0.353 & 0.383 & $+8.4$ \\
+LSTM & 0.357 & 0.397 & $+11.0$ \\
+Local heads & 0.410 & 0.435 & $+6.1$ \\
+\bottomrule
+\end{tabular}
