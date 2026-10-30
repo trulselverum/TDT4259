@@ -152,15 +152,6 @@ October 2026\par}
 
 % ---------- Front matter ----------
 \pagenumbering{roman}
-
-% ---------- Abstract ----------
-\begin{abstract}
-\noindent
-A Nordic electricity retailer must nominate its expected consumption for each hour of the next day, and deviations between forecast and actual consumption are settled as imbalances at prices that can differ substantially from the spot price. We forecast the retailer's hourly consumption for six price areas (NO1--NO5 and FI), issued at 10:00 for the next day, when metered consumption is only available up to five days earlier. The forecast therefore uses consumption lags of at least six days, the temperature forecast for the target day and calendar information.
-We follow the chain from problem to monitoring. Models are compared with a same-hour-last-week baseline on a chronological hold-out period, with features checked for data leakage, and the forecast quality is translated into the retailer's imbalance in MWh. \todo{On the test period the best model reduces MAE from 0.49\,MW to 0.31\,MW (about 38\,\%) compared with the baseline; check against final results and add imbalance reduction.}
-We also design and test a protocol for missing inputs at forecast time. In simulated outages it keeps the error close to that of complete data when some consumption lags are missing, and limits it to 0.89\,MW when all consumption features are missing, compared with 2.79\,MW for the baseline.
-The models are deliberately simple and explainable rather than state of the art. We state where the evidence is thin: only one year of data, a test period of winter and early spring, no historical imbalance prices, and outage simulations with randomly placed days. These are the areas where we recommend further exploration before deployment.
-\end{abstract}
 \newpage
 \begingroup
 \small % slightly smaller so the contents fit on one page
@@ -173,9 +164,9 @@ The models are deliberately simple and explainable rather than state of the art.
 
 \section{Problem Definition and Business Understanding}
 \label{sec:problem}
-\subsection{Context}
+\subsection{Intro}
 
-Aneo is a Nordic renewable energy company headquartered in Trondheim. The company was established in 2022, and is owned by TrønderEnergi and the investment fund HitecVision \cite{aneo_sweden}. In addition to producing wind and hydropower, Aneo offers energy market services to other actors in the power sector. Through its Energy Management unit, Aneo helps other companies take part in the power markets in Norway, Sweden and Finland. By using data-driven models for forecasting, optimization and trading, Aneo provides decision support to retailers in the power market, in this case at a fixed price \cite{aneo_markets}. One such service is forecasting electricity consumption for energy retailers, which is the focus of this project.
+Aneo is a Nordic renewable energy company headquartered in Trondheim. The company was established in 2022, and is owned by TrønderEnergi and the investment fund HitecVision \cite{aneo_sweden}. In addition to producing wind and hydropower, Aneo offers energy market services to other actors in the power sector. Through its Energy Management unit, Aneo helps other companies take part in the power markets in Norway, Sweden and Finland. By using data-driven models for forecasting, optimization and trading, Aneo provides decision support to retailers in the power market, in this case at a fixed price \cite{aneo_markets}. One such service is forecasting electricity consumption for energy retailers, which is the focus of this project. In this case, the forecasts are delivered to a single retailer whose customers are spread across six price areas in Norway and Finland. "The retailer" therefore refers to this one client throughout the report.
 
 \subsection{Problem and Decision to be Supported}
 \label{sec:decision}
@@ -263,9 +254,6 @@ The problem is to produce a reliable forecast of the retailer's hourly electrici
 \end{figure}
 
 \subsection{Stakeholders}
-
-The main stakeholders are:
-
 \begin{description}[leftmargin=0pt, itemsep=3pt, parsep=0pt, topsep=4pt]
     \item[Aneo] Provides next-day hourly consumption forecasts for the retailer's six price areas.
     \item[Electricity retailer] Buys electricity in the day-ahead market and sells it to its customers with a mark-up.
@@ -277,7 +265,7 @@ The main stakeholders are:
 \subsection{Value Chain and Objectives}
 \label{sec:value-chain}
 
-The forecasting service connects several actors, as shown in \cref{fig:actors}. Weather forecast providers supply Aneo with critical information such as temperature, humidity and wind, while metered consumption reaches Aneo through the metering data hubs with a delay of about five days. Based on this, Aneo delivers next-day hourly forecasts to the retailer, which uses them to nominate its expected demand in the day-ahead market. Any deviation between nominated and actual consumption is settled as an imbalance by the TSOs and eSett, and the cost is borne by the retailer.
+The forecasting service connects several actors and stakeholders, as shown in \cref{fig:actors}. Weather forecast providers supply Aneo with critical information such as temperature, humidity and wind, while metered consumption reaches Aneo through the metering data hubs with a delay of about five days. Flytt til 1.2
 
 \begin{figure}[H]
 \centering
@@ -337,7 +325,7 @@ The forecasting service connects several actors, as shown in \cref{fig:actors}. 
 \label{fig:actors}
 \end{figure}
 
-The quality of the input data is crucial, since a predictive model is only as good as the data it is based on. Errors in the weather forecasts propagate through the whole chain: Aneo's predictions become less accurate, which means that the electricity retailer must settle the resulting deficit or surplus at less favourable imbalance prices, reducing its profit.
+The quality of the input data is crucial, since a predictive model is only as good as the data it is based on. Errors in the weather forecasts propagate through the whole chain: Aneo's predictions become less accurate, which means that the electricity retailer must settle the resulting deficit or surplus at less favourable imbalance prices, reducing the models value as a decision support tool
 
 Errors can also come from the consumption data, for example missing or delayed meter values, or from changes in the retailer's customer portfolio that the model does not capture. Aneo can also be affected by a poor predictive model: even if the weather forecasts are accurate, the forecasts delivered to the retailer will be wrong if the model uses this information incorrectly. An example could be failing to rank the importance of each source, leading to a wrong combination or formula. Customers are also affected, although only indirectly: if imbalance costs remain high over time, the retailer may pass some of them on through higher prices, which in turn can lead customers to switch to another retailer.
 
@@ -361,29 +349,37 @@ Since the retailer pays Aneo a fixed fee, Aneo does not earn or lose money direc
 \caption{Value chain for Aneo. Because Aneo is paid a fixed fee, forecast quality creates value indirectly, through the retailer's willingness to pay for the service and the likelihood of contract renewal.}
 \label{fig:value-chain}
 \end{figure}
-
-Based on this, the project has three main objectives:
-
-\begin{description}[leftmargin=0pt, itemsep=2pt]
-    \item[Technical] Produce accurate and unbiased hourly forecasts that outperform a simple baseline in all six price areas.
-    \item[Business] Reduce the retailer's total imbalance and the frequency of large forecast errors.
-    \item[Operational] Deliver the forecasts reliably before 10:00 every day, using only information available at that time.
-\end{description}
-
-The measurable criteria used to evaluate these objectives are defined in \cref{sec:success}.
-
-\subsection{Success Criteria}
+\vspace{-0.5cm}
+\subsection{Objectives and Success Criteria}
 \label{sec:success}
 
-The objectives in \cref{sec:value-chain} are evaluated on a held-out test period that the models have not seen during training or tuning (see \cref{sec:validation}).
+Based on the value chain, the project has three main objectives. Each has a measurable success criterion, evaluated on a held-out test period that the models have not seen during training or tuning (see \cref{sec:validation}).
 
-\begin{description}[leftmargin=0pt, itemsep=2pt]
-    \item[Technical] Lower mean absolute error (MAE) than the same-hour-last-week baseline in all six price areas, and a bias close to zero. The choice of MAE as the main measure is justified in \cref{sec:metrics}.
-    \item[Business] Lower total imbalance (MWh) and fewer hours with large errors than the baseline, consistently across price areas and seasons. Specific target levels would in practice be agreed with Aneo and the retailer, for example in a service-level agreement.
-    \item[Operational] The forecast is produced before 10:00 every day, using only data available at that time.
-\end{description}
+\begin{table}[H]
+\centering
+\small
+\renewcommand{\arraystretch}{1.2}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{2.35cm}>{\raggedright\arraybackslash}p{5.0cm}>{\raggedright\arraybackslash}X@{}}
+\toprule
+ & \textbf{Objective} & \textbf{Success criterion} \\
+\midrule
+\textcolor{cblue}{$\blacksquare$}\enspace\textbf{\textcolor{cblue!75!black}{Technical}} &
+Produce accurate and unbiased hourly forecasts that outperform a simple baseline in all six price areas. &
+Lower mean absolute error (MAE) than the same-hour-last-week baseline in all six price areas, and a bias close to zero (the choice of MAE is justified in \cref{sec:metrics}). \\[6pt]
+\textcolor{cgreen}{$\blacksquare$}\enspace\textbf{\textcolor{cgreen!60!black}{Business}} &
+Reduce the retailer's total imbalance and the frequency of large forecast errors. &
+Lower total imbalance (MWh) and fewer hours with large errors than the baseline, consistently across price areas and seasons. Target levels would be agreed with Aneo and the retailer, for example in a service-level agreement. \\[6pt]
+\textcolor{corange}{$\blacksquare$}\enspace\textbf{\textcolor{corange!75!black}{Operational}} &
+Deliver the forecasts reliably before 10:00 every day, using only information available at that time. &
+The forecast is produced before 10:00 every day, using only data available at that time. \\
+\bottomrule
+\end{tabularx}
+\caption{Project objectives and the criteria used to evaluate them.}
+\label{tab:objectives}
+\end{table}
 
 \subsection{Constraints and Assumptions}
+\label{sec:assumptions}
 
 The main constraints are that the forecast is issued at around 10:00 for the next day, that consumption data are only available up to five days earlier, and that only temperature forecasts and calendar information are available as additional inputs (see \cref{sec:decision}). We further assume that:
 
@@ -391,7 +387,7 @@ The main constraints are that the forecast is issued at around 10:00 for the nex
     \item the retailer pays Aneo a fixed fee, and over- and underforecasting are equally costly;
     \item imbalance costs scale approximately linearly with the forecast error, so the full settlement mechanism is not modelled;
     \item the temperature values are forecasts available at the time the consumption forecast is made;
-    \item Aneo's current forecasting method is unknown, so a simple baseline is used as the reference.
+    \item Aneo has an existing forecasting method, but its details are unknown, so a simple baseline is used as a reference
     \item the retailer is small relative to each price area, so its forecast errors do not affect the imbalance price;
     \item the external weather data, which are observed values, are used as an approximation of weather forecasts;
     \item the retailer nominates directly based on the forecast, without later adjustments in the intraday market.
@@ -401,15 +397,18 @@ The main constraints are that the forecast is issued at around 10:00 for the nex
 % =====================================================================
 \section{Data Understanding and Background}
 \label{sec:data}
+
+This section first gives the domain background behind the choice of input variables, and then describes and explores the data.
+
 \subsection{Domain Background}
-The electricity market divides Norway into 5 different price-regions, while Finland is kept as one big price region. Supply and Demand within each region combined with possible trade between price regions, depending on transmission capacity dictates a market price for each delivery interval (currently one hour, but will move towards 15-minutes intervals), the day ahead. The consumption values represent only the retailer's customers in each price area, not the total consumption in that area. Therefore consumption of the customers can be dependent on a different mix of variables than that of the price region as a whole.
 
+Norway is divided into five price areas (NO1--NO5), while Finland is a single price area. Supply and demand within each area, together with trade between areas (limited by transmission capacity), set the market price for each delivery interval in the day-ahead market. Since 1 October 2025 the interval is 15 minutes, but the data and the forecasting task in this project are hourly. The consumption values represent only the retailer's customers in each price area, not the total consumption in the area, so what drives the areas consumption can differ from what drives the area as a whole.
 
-One of the biggest consumers of electricity is heating. Norway and Finland are both located in cold climates where heating is a necessity, especially in the winter months. Especially households have a higher consumption of electricity in the winter due to heating, thus temperature is a key input-variable for forecasting demand. Consumption also follows daily patterns. When the population wakes up, lights are turned on, showers use warm water that needs to be replenished etc and drives up demand. During the working day, industry is driving the demand, while households are driving the demand again in the evening cooking, doing laundry etc. During the night, activity falls and so does the power consumption. Thus, time information, such as the hour of the day and day of the week, are important input variables for forecasting electricity demand.
+Heating is one of the biggest uses of electricity in cold climates such as Norway and Finland. Households in particular use more electricity in winter, which makes temperature a key input for forecasting demand. Consumption also follows a daily pattern. It rises in the morning when people get up, turn on the lights and use hot water, and in general industry drives demand during working hours. In the evening households push demand up again with cooking and laundry, and at night activity and consumption falls. The hour of the day and the day of the week are therefore important inputs. For this retailer, the dip during working hours in \cref{sec:eda} suggests that households make up most of the portfolio.
 
-The retailer submits bids in the day-ahead market on Nord Pool for the price regions in which it operates. Accepted bids are binding, although the retailer can adjust its purchases through intraday trading before delivery. Since electricity production and consumption must remain balanced, the TSOs use balancing markets to address differences between planned and actual production and consumption. The retailer bears financial responsibility for deviations between its contracted purchases and its customers’ actual consumption, either directly as a balance responsible party or through an agreement with one. These deviations are settled at the imbalance price, which can differ from the day-ahead price. Forecast errors can therefore cause financial losses for the retailer.
+The retailer submits bids for next-day delivery on Nord Pool, and accepted bids are binding. It bears the financial responsibility for deviations between its purchases and its customers' actual consumption, either directly as a balance responsible party or through an agreement with one. These deviations are settled at the imbalance price, which can differ from the day-ahead price (see \cref{sec:value-chain}), so forecast errors can cause financial losses. The retailer can reduce deviations through intraday trading before delivery, but our analysis ignores this (see \cref{sec:assumptions}).
 
-Public holidays may also affect electricity consumption by changing household routines and business activity. However, our dataset covers only one year, providing limited examples from which to learn holiday effects. These effects may therefore be difficult to distinguish from other influences, such as temperature and day of the week.
+Public holidays change household routines and business activity and can therefore affect consumption. With only one year of data, the effect is hard to separate from temperature and weekday (see \cref{sec:data-limitations}).
 
 \subsection{Dataset Description}
 The dataset \texttt{consumption\_temp.csv} contains 49,494 hourly
@@ -427,8 +426,7 @@ location. Finland, labelled \texttt{helsingfors} in the dataset,
 starts on 14 July 2022 at 21:00 and ends at the same time as the
 Norwegian series, giving 6,289 observations.
 
-Table~\ref{tab:dataset_locations} shows the location identifiers
-and their corresponding electricity price areas. The consumption series represent the retailer's customers associated with each location, rather than total consumption in the price area. As a result, the consumption level depends on how many customers the retailer serves in each area rather than on the size of the representative city, so levels cannot be compared directly across areas. The level may also change abruptly if the retailer gains or loses customers, which a model may mistake for a change in demand.
+Table~\ref{tab:dataset_locations} shows the location labels in the dataset and the price area each represents. The consumption series cover only the retailer's customers in each price area, not total consumption in the area, while the temperature is the forecast for the named city. The consumption level therefore most likely reflects how many customers the retailer has in each area rather than the size of the city, so levels should not be compared directly across areas. The level may also change abruptly if the retailer gains or loses customers, which a model may mistake for a change in demand.
 
 \begin{table}[htbp]
     \centering
@@ -455,8 +453,8 @@ and their corresponding electricity price areas. The consumption series represen
 
 The exploratory analysis focuses on the patterns that motivate the choice of features and models in \cref{sec:methods}.
 
-\paragraph{Consumption level and seasonality}\mbox{}\\
-The consumption level differs considerably between locations, with Oslo having the highest and Tromsø the lowest across the whole year. Because of these differences in level, forecast errors are also compared relative to the consumption level (nMAE) in \cref{sec:methods}. All Norwegian locations show a strong seasonal pattern: in Oslo, the monthly mean rises from about 2.3\,MW in the summer of 2022 to about 13.4\,MW in December 2022 (\cref{fig:consumption-level}).
+\paragraph{Consumption level and seasonality} regions\mbox{}\\
+The consumption level differs considerably between locations, with Oslo having the highest and Tromsø the lowest across most of the year. Because of these differences in level, forecast errors are also compared relative to the consumption level (nMAE) in \cref{sec:methods}. All Norwegian locations show a strong seasonal pattern: in Oslo, the monthly mean rises from about 2.3\,MW in the summer of 2022 to about 13.4\,MW in December 2022 (\cref{fig:consumption-level}).
 
 Not all of this increase is seasonal, however. At similar temperatures, Norwegian consumption in October 2022 is roughly 1.3 to 2 times the level in April 2022; in Oslo, for example, the mean is 2.8\,MW at 7.6\,$^\circ$C in April and 6.1\,MW at 8.1\,$^\circ$C in October. In Helsinki, consumption increases from about 2.6 to 6.3\,MW between July and September 2022. Since temperature alone cannot explain these level shifts, they most likely reflect changes in the retailer's customer portfolio. Lagged consumption features can capture such shifts, while temperature cannot.
 
@@ -479,7 +477,7 @@ Within each location, consumption and temperature are strongly negatively correl
 \end{figure}
 
 \paragraph{Daily and weekly patterns}\mbox{}\\
-The daily profile is clearly shaped by the time of day and by whether it is a weekday or weekend. On weekdays, consumption has a morning peak around 07:00, a dip during the working day and a larger evening peak at around 20:00. On weekends the morning peak is replaced by a later and broader rise from about 09:00, and the evening peak is slightly higher. Consumption is lowest at night in all Norwegian locations. Helsinki is almost flat over the day with no clear weekend effect, which suggests that its portfolio differs from the Norwegian ones. These patterns motivate hour-of-day, weekday and weekend features, and show that the hour of day and the day type interact. \cref{fig:daily-profiles} shows the average profiles.
+The daily profile is clearly shaped by the time of day and by whether it is a weekday or weekend. On weekdays, consumption has a morning peak around 07:00, a dip during the working day and a larger evening peak at around 20:00. On weekends the morning peak is replaced by a later and broader rise from about 09:00, and the evening peak is slightly higher - people like to sleep in. Consumption is lowest at night in all Norwegian locations. Helsinki is almost flat over the day with no clear weekend effect, which suggests that its portfolio differs from the Norwegian ones. These patterns motivate hour-of-day, weekday and weekend features, and show that the hour of day and the day type interact. \cref{fig:daily-profiles} shows the average profiles.
 
 \begin{figure}[htbp]
 \centering
@@ -490,69 +488,68 @@ The daily profile is clearly shaped by the time of day and by whether it is a we
 
 \FloatBarrier
 \subsection{Data Quality Issues}
+An analysis of the data shows that the data is of good quality. There are no missing values, duplicates or gaps, but there are some limitations worth noting. As previously mentioned, the data for Finland start at a later point and have 27.2\,\% fewer data points, which gives the Finnish price area less training data. The first 32 hours of the Finnish data also have consumption set to 0. While this might seem like an error, it makes sense if the retailer started serving Finnish customers at this point. Other than that the dataset is complete.
 
-\todo{Points to cover (the sentence on missing values and duplicates in 2.2 could be moved here):}
-\begin{itemize}[itemsep=0pt, topsep=2pt]\color{red}
-    \item The Finnish series starts about three months later, so less training data is available for Finland.
-    \item Timestamps are in UTC, so local time (including daylight saving time) must be derived for calendar features.
-    \item Any outliers or level shifts found in the exploratory analysis, and how they are handled.
-    \item The temperature values are forecasts and contain their own errors.
-\end{itemize}
+The data use UTC, which standardises the timestamps nicely, but Finland and Norway are in different time zones. Norway uses UTC+1 and Finland UTC+2, and both countries use daylight saving time (UTC+2 and UTC+3, respectively). This means that 07:00 in the dataset corresponds to different local times in Norway and Finland, so for training it is necessary to derive local time from calendars. Since timestamps are stored in UTC, daylight-saving transitions introduce no gaps or duplicate timestamps in the dataset. However, converting to local time produces days with 23 or 25 hourly observations, which matters when interpreting daily patterns and constructing calendar features. We derive the local time per location and construct the calendar features from it, as described in \cref{sec:data-processing}.
 
-An analysis of the data shows that the data are of really good Quality. There are no missing data, duplicates or "gaps", there are however some limitations worth noting. As previously mentioned the data for Finland starts at a later point and have 27.2\% fewer data points. This gives the finish power region less training data for our model. The first 32 hours of the finish data also have consumption set to 0. While it might seem like an error, it makes sense as maybe the retailer started serving finish customers at this point. Other than that the dataset is complete.
-
-The data is using UTC-time, while this standardizes nicely, it is worth noting that Finland and Norway uses different time-zones. Norway uses UTC+1 while Finland uses UTC+2, both countries also uses daylight saving time (UTC+2 and UTC+3 corresponding). This means that 7 am in the dataset corresponds to a different local time for Norway and Finland. For training it's necessary to derive local time through calendars. 
-
-Since timestamps are stored in UTC, daylight-saving transitions introduce no gaps or duplicate timestamps in the dataset. However, converting to local time produces days with 23 or 25 hourly observations, which matters when interpreting daily patterns and constructing calendar features.
-
-The temperature data in consumption.csv is the forecast that 
+The temperature values in \texttt{consumption\_temp.csv} represent forecasts for the corresponding hours rather than observed temperatures. Differences between forecast and actual temperatures introduce uncertainty into the consumption predictions, particularly because temperature influences heating demand. The dataset does not contain matched observed temperatures, so the magnitude of these forecast errors cannot be assessed directly.
 
 \subsection{Possible External Data}
-\todo{Points to cover (consider renaming to ``External Data'', since external data have actually been used, and describe what was used rather than what is possible):}
-\begin{itemize}[itemsep=0pt, topsep=2pt]\color{red}
-    \item Wind and precipitation per location: the source, and whether these are forecasts or observed weather. If observed, this must be stated as a limitation.
-    \item Holiday calendars for Norway and Finland.
-    \item Possibly prices, if they are retrieved for the business evaluation.
-\end{itemize}
+The original dataset is supplemented with historical weather data, including temperature, wind and precipitation. Weather observations are matched to the consumption series by location and UTC timestamp. Calendar information identifies public holidays separately for Norway and Finland, while time-zone rules provide local dates and hours and account for daylight-saving transitions. The additional weather data describe historical conditions rather than forecasts available before the target hour. Consequently, their use in evaluation may overstate operational forecasting performance, since future wind and precipitation would themselves need to be forecast.
 
 \subsection{Assumptions and Limitations}
-\todo{Points to cover (keep this to limitations of the data, so it does not overlap with Section 1.6):}
-\begin{itemize}[itemsep=0pt, topsep=2pt]\color{red}
-    \item Only about one year of data, so each season and each public holiday occurs only once.
-    \item One city represents the weather for the whole price area.
-    \item No customer-level data, so portfolio changes cannot be observed directly.
-    \item If the weather data are observed values: the results may be somewhat optimistic.
-\end{itemize}
+\label{sec:data-limitations}
+The dataset covers approximately one year, with a shorter observation period for Finland. It therefore contains no repeated annual cycles, and individual annual public holidays are represented at most once. This limits the ability to distinguish recurring seasonal and holiday effects from conditions specific to the observed year.
+
+Weather conditions for each price area are represented by a single city. Temperature, wind and precipitation may vary considerably within an area, so the selected city may not accurately represent the weather experienced by all customers. This introduces uncertainty into the relationship between weather and aggregate consumption.
+
+The dataset contains aggregate consumption without customer-level information. Changes in the retailer's customer portfolio therefore cannot be observed directly. An increase or decrease in consumption could reflect customers joining or leaving the portfolio, changes in existing customers' behaviour, or weather conditions. These explanations cannot be separated reliably using the available data alone.
+
+
+
+
 
 \newpage
-
 % =====================================================================
 % Ansvarlig: Thomas & Truls
 \section{Methods, Analysis and Technical Evaluation}
 \label{sec:methods}
 \subsection{Reproducing the Forecasting Situation}
-As stated in the task description, consumption measurements are available with a delay of approximately five days. When the forecast for 19 September is made at 10:00 on 18 September, the most recent consumption data are therefore from 13 September (see \cref{fig:forecast-timeline}). Weather forecasts and calendar information, on the other hand, are available for the day being predicted.
+The information available at forecast time is shown in \cref{fig:forecast-timeline}. We enforce it in three places. Only consumption lag of six days is used as a feature, and the weather forecast and calendar features are taken for the target day itself. Due to the temporal nature of the dataset, the chronological split leaves a gap of six days between the last training day and the first test day, and the same gap is used between the training and validation windows when tuning, so no model learns from consumption that is not yet known when a test day is forecast.
+
+To enforce this, automated tests fail if the target is among the features, or if the gap is too short. A black-box test can also be run on any feature builder: it scrambles every value that is unknown when a given day is forecast, rebuilds the features and checks that the features for that day did not change.
 
 \subsection{Data Processing}
-Prior to training our models, we prepare the data by converting all dates into pd.datetime objects, and then to UTC for the datasets used. As a part of our data exploration we found there were no missing values in the dataset, and no need to handle NAs there. However, there is still a possibility of missing values at inference time, and we need a protocol to handle these events. Calendar features (hour, weekday, holiday) are deterministic and cannot be missing. The realistic failures are of two kinds, with different causes: (i) the consumption lags and the min/max of the last available day, which depend on the metering data hub and its five-day delay, and (ii) the weather features, which all come from one provider and therefore tend to be missing together.
+\label{sec:data-processing}
+Prior to training our models, we parse the timestamps as timezone-aware UTC datetimes, which is also the time base used to join the weather data and compute the consumption lag. The calendar features (date, hour, weekday and holiday) are derived from local time, using Europe/Oslo for the Norwegian locations and Europe/Helsinki for Finland, so that for example hour 8 means 08:00 local time in both countries and daylight savings is handled. As mentioned in section 2.4 the dataset is very clean. However, there is still a possibility of missing values at inference time during future deployment, motivating the need for a protocol for handling missing data. Calendar features (hour, weekday, holiday) are deterministic and cannot be missing. The realistic failures are of two kinds, with different causes:
+\begin{enumerate}[itemsep=1pt, topsep=3pt]
+    \item the consumption data arrives later than expected meaning we need to predict longer ahead than the model is trained for. 
+    \item the external weather data, which all comes from one provider, might be missing. As it comes from one provider, it will tend to be missing together meaning in some instances we will have no external weather data to rely on.
+\end{enumerate}
 
+
+
+\subsubsection*{How correlation motivates the methods for handling missing data}
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.65\linewidth]{figures/3 Methods, Analysis and Technical Evaluation/attribute_correlation_heatmap.png}
 \caption{Pearson correlation between the attributes, computed within each location and then averaged over the locations. Computing it within locations avoids the level differences between the cities inflating or masking the correlations.}
 \label{fig:attribute-correlation}
 \end{figure}
-
-\subsubsection*{How the correlations motivate the methods}
-A value can only be imputed from other features that are correlated with it, so \cref{fig:attribute-correlation} tells us which methods are worth testing. The consumption lags are very strongly correlated with each other ($r = 0.93$--$0.98$) and with consumption ($r = 0.92$--$0.94$), so a missing lag can be predicted from the others; this motivates regression-based imputation (MICE, where each feature is regressed on all the others) against simple alternatives such as KNN and mean imputation. The weather variables are only weakly correlated with each other (temperature has $|r| \le 0.16$ to the rest), so a missing temperature cannot be recovered from them, and we use interpolation and persistence instead. If all consumption features are missing, the strongest remaining signal is temperature ($r = -0.79$), which motivates a model on weather and calendar only. Pearson correlation only captures linear relationships, and temperature and consumption are related non-linearly, so the correlations guide which methods to test, while the experiment decides which works.
+A value can only be imputed from other features that are correlated with it, so \cref{fig:attribute-correlation} tells us which methods are worth testing. The consumption lags are very strongly correlated with each other ($r = 0.93$--$0.98$) and with consumption ($r = 0.92$--$0.94$), so a missing lag can be predicted from the others; this motivates regression-based imputation (MICE, where each feature is regressed on all the others) against simple alternatives such as KNN and mean imputation. The weather variables are only weakly correlated with each other (temperature has $|r| \le 0.16$ to the rest), so a missing temperature cannot be recovered from them. This motivated the use of interpolation and persistence instead. If all consumption features are missing, the strongest remaining signal is temperature ($r = -0.79$), which motivates a model on weather and calendar only. Pearson correlation only captures linear relationships, and temperature and consumption are related non-linearly, so the correlations guide which methods to test, while the experiment decides which work.
 
 \subsubsection*{Protocol and experimental set-up}
-The resulting protocol, applied per row (\texttt{machine\_learning/imputation.py}): (1) weather gaps of up to three hours are interpolated, and longer gaps are filled with the value from the same hour the day before, then the training mean; (2) if at most four of the five consumption lag features are missing, they are imputed with MICE (scikit-learn's \texttt{IterativeImputer}); (3) if all are missing, the forecast comes from a second model trained on weather and calendar features only.
+The resulting protocol is applied per row:
+\begin{enumerate}[itemsep=1pt, topsep=3pt]
+    \item weather gaps of up to three hours are interpolated, and longer gaps are filled with the value from the same hour the day before, then the training mean;
+    \item if at most four of the five consumption lag features are missing, they are imputed with MICE (scikit-learn's \texttt{IterativeImputer});
+    \item if all are missing, the forecast comes from a second model trained on weather and calendar features only.
+\end{enumerate}
 
 We tested it on the chronological split used for all models (training 7 April 2022--14 January 2023, 38,235 rows; test 20 January--3 April 2023, 10,495 rows; a six-day gap for the consumption delay). The imputation models are fitted on the training period only, and the forecasting model is XGBoost (500 trees, learning rate 0.05, depth 5, one of the grid-search combinations). Outages are simulated by removing whole days of data for 20\,\% of the (location, day) pairs in the test period, the same days for all methods, and the MAE is measured on the affected hours.
 
 \subsubsection*{Results}
-\cref{tab:missing-data} shows the MAE for the four outage scenarios; without any outage it is 0.38\,MW on the same hours. The full comparison with all methods we tried is in \cref{app:missing-data}.
+\cref{tab:missing-data} shows the MAE for the four outage scenarios; without any outage it is 0.38\,MW on the same hours. The proposed protocol is best or tied among the methods in the table, and no variant in \cref{tab:missing-data-full} (\cref{app:missing-data}) is more than 0.03\,MW better in any scenario, so we use the simplest. One model per missing-feature pattern would be at most 0.013\,MW better but needs several models to maintain.
 
 \begin{table}[H]
 \centering
@@ -560,9 +557,9 @@ We tested it on the chronological split used for all models (training 7 April 20
 \label{tab:missing-data}
 \small
 \setlength{\tabcolsep}{4pt}
-\begin{tabularx}{\textwidth}{X *{4}{>{\centering\arraybackslash}p{2.3cm}}}
+\begin{tabularx}{\textwidth}{X *{4}{>{\centering\arraybackslash}p{2.0cm}}}
 \toprule
- & Lag 7 d missing & Last available day missing & All consumption features missing & Whole weather forecast missing \\
+ & Lag 7 d missing & Last day missing & All consumption missing & Weather forecast missing \\
 \midrule
 XGBoost, NaN handled natively & 0.70 & 2.77 & 3.92 & 0.62 \\
 Mean imputation & 0.40 & 2.56 & 3.05 & 0.63 \\
@@ -575,160 +572,186 @@ Baseline (same hour last week) & 2.79 & 0.57 & 2.79 & 0.57 \\
 \end{tabularx}
 \end{table}
 
-\noindent The results follow the correlation structure. Methods that exploit the correlation between the lags are within 0.02\,MW of the error without outage when lags are missing, while native NaN handling and mean imputation are far worse when the last available day is missing (2.6--2.8\,MW). For weather, interpolation and persistence (0.44\,MW) beat KNN, mean and native NaN handling (0.62--0.69\,MW). When all consumption features are missing the error more than doubles to 0.89\,MW, but this is much better than the baseline or a fixed profile (2.79\,MW), because temperature explains much of the variation. Variants of MICE (ExtraTrees, multiple imputation) differ by at most 0.03\,MW, so we use the simplest. Training with simulated outages helps, but is not as good as imputing, and one model per pattern of missing features matches the proposed protocol but needs several models. The limit of four missing lags comes from removing $k$ of the five lags at random: MICE beats the weather and calendar model for $k \le 4$ (0.38--0.41 against 0.89\,MW) but not for $k=5$ (3.0\,MW, \cref{tab:threshold}). The test uses randomly placed single-day outages, so longer real outages may be harder to handle.
-
 \subsection{Feature Engineering}
-In order to increase the model performance, we tried to perform extensive feature engineering. Our effort was focusing using logical relations in the data to build the features, such as adding an attribute for season, whether it is weekday or weekend. When deciding on which features to keep we followed two criteria:
-1. The engineered attribute must have a significant correlation to the consumption,
-2. The engineered attribute must be practical to implement.
-We decided against adding Season into the final model, as it is not practical. The reason is that we only have about 1 year of training data. Thus, the model would only see the season attribute for one year, meaninging we have just one summer, one winter, one spring and one autumn.
+\label{sec:feature-engineering}
 
-Some engineered attributes that were strongly correlated to the target (consumption) was the consumption on the same hour 6 days ago, 7 days ago and 14 days ago. In addition, we saw that temperature is highly correlated to the consumption, thus we decided to explore what other weather data is correlated to consumption. Weather data was extracted from OpenMetro.
-\begin{figure}
-        \centering
-        \includegraphics[width=0.75\linewidth]{correlation_to_consumption.png}
-        \caption{Correlation between attributes and consumption in five days}
-    \label{fig:placeholder}
+To give the models more information than the raw dataset provides, we engineered additional features in three steps:
+\begin{enumerate}[itemsep=1pt, topsep=3pt]
+    \item form a hypothesis for how a feature affects consumption, for example that demand differs on weekends;
+    \item encode the feature in a form the models can use, for example a binary weekend indicator;
+    \item test the feature in an ablation study, measuring the change in validation MAE when it is removed.
+\end{enumerate}
+
+We ran the ablation study with XGBoost, since it trains quickly enough to refit the model once for each feature removed. To illustrate, a full training job of XGBoost took <20 minutes, while the LSTM took over 6 hours. Each feature was removed one at a time, and the model was refitted and evaluated on the validation windows described in \cref{sec:validation}. \Cref{fig:ablation-study} shows the results.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\linewidth]{ablation_study.png}
+    \caption{Change in XGBoost validation MAE when each feature is removed one at a time. Features with an effect close to zero, or that improve the model when removed, add little information for XGBoost.}
+    \label{fig:ablation-study}
 \end{figure}
 
-Our findings were interesting. Weekday and Weekend had little correlative power and was thus removed from the model, this was against our hypothesis that there is a meaningfull difference in consumption patterns between weekdays and weekends. Likewise, we were surpised that wind direction has a larger impact than wind speed. This most likely suggest that a direction from say north will bring in colder weather and increase consumption.
+Given the strong correlation between temperature and consumption (\cref{fig:attribute-correlation}), we expected additional weather variables to improve the forecasts. For XGBoost, however, several features had no effect or made the model worse. Wind direction is one example. It is an angle, so $359^\circ$ and $1^\circ$ are almost the same direction but far apart as numbers. A decision tree splitting on the raw value cannot see this, and the feature mostly adds noise. The weekend indicator also added nothing, because it is fully determined by the weekday feature: a single split on weekday $\geq 5$ (zero-indexed) reproduces it.
 
-We kept all attributes with a correlative power of over |0.05|. That means holiday, weekday, weekend and precipritation was removed. [claude todo: update the code to not include these attribuyes, remove them from dataset.csv] 
+Based on these results, we retrained all our main models, a CNN and LSTM discussed in \cref{sec:main-models}, models without the five features that the ablation flagged: the minimum consumption of the last available day, wind speed, wind direction, snowfall and the weekend indicator. \Cref{tab:ablation-before-after} shows the results.
+
+\begin{table}[H]
+\centering
+\caption{Validation MAE before and after removing the five features flagged by the ablation study.}
+\label{tab:ablation-before-after}
+\small
+\begin{tabular}{lrrr}
+\toprule
+ & \multicolumn{3}{c}{Validation MAE [MW]} \\
+\cmidrule(lr){2-4}
+Model & All features & Reduced set & $\Delta$ [\%] \\
+\midrule
+XGBoost & 0.625 & 0.591 & $-5.4$ \\
+CNN     & 0.353 & 0.383 & $+8.4$ \\
+LSTM    & 0.357 & 0.397 & $+11.0$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The models responded in opposite directions. XGBoost improved by 5.4\,\% without the five features, while the CNN and LSTM became 8.4\,\% and 11.0\,\%
+
+The opposite responses can be explained by how the two model types use weak or noisy features. XGBoost uses features through hard, greedy splits: a noisy feature such as raw wind direction will occasionally be chosen for a split by chance, so the model partly fits noise, and removing it lowers the validation error. 
+
+The CNN and LSTM are regularised with weight decay and dropout, which shrinks the weights of uninformative inputs towards zero. For these models a weak or noisy feature costs little, while removing it loses whatever signal it carries. The neural networks also combine all inputs in weighted sums and process them as sequences, so they can learn joint, non-linear, effects, such as wind increasing heating demand on cold days, and how the weather develops through the day. 
+
+To conclude we decided on keeping the full feature set in our production model, seeing that the models were able to filter out noise and extract more complex patterns.
 
 
-\subsection{Baselines}
-\todo{(1) Same hour one week earlier (required benchmark). (2) Possibly mean of same hour/weekday last N available weeks. (3) Simple linear regression on temperature + calendar. THOMAS}
+\subsection{Baseline Model}
+For the technical aspect of the ML project to pass, we must have a baseline to compare against. As stated in \cref{sec:assumptions}, we assume that there exists an existing forecasting model but that we don have access to it. Thus we need to construct a baseline ourselves to compare our model performance against. 
 
-For the technical aspect of the ML project to pass, we must have a baseline to compare against. For this project we were split between using average consumption for last seven days and  same consumption as 6 days ago. Our ideal choice would be consumption yesterday, but as we get the consumption data with 5 days delay, 6 days ago is the closest we can get.
+For this project, we were split between using the average consumption for the last seven days and the same consumption as 6 days ago. Our ideal choice would be consumption yesterday, but as we get the consumption data with a 5-day delay, 6 days ago is the closest we can get.
 
-After carefull research we decided on using a \textit{naive seasonal model}.  It is defined as follows:
-\textit{y}\^\textit{T}+\textit{h}∣\textit{T}=\textit{y}\textit{T}+\textit{h}−\textit{m}(\textit{k}+1),
-[claude todo: add source https://otexts.com/fpp2/toolbox.html#sec-simple-methods]
-The prediction for timestep T+h is what happened on the same timestep, but one season ago. This works great for periodic timeseries data which has a strong repeating pattern. In our case, the data is repeating at a daily oscilating pattern, seen below [claude todo: add figure number]
-\begin{figure}
+After careful research, we decided on using a \textit{seasonal naïve model} \cite{hyndman_fpp2}. It is defined as follows:
+\[
+    \hat{y}_{T+h|T} = y_{T+h-m(k+1)},
+\]
+where $m$ is the seasonal period and $k$ is the integer part of $(h-1)/m$ \cite{hyndman_fpp2}.
+The prediction for timestep $T+h$ is what happened on the same timestep, one season ago. This works great for periodic time-series data which has a strong repeating pattern. In our case, the data is repeating in a daily oscillating pattern, seen below in \cref{fig:baseline-vs-actual}. The average performance of the baseline across all cities is an MAE of 0.495\,MW, which amounts to 8.98\%.
+
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.75\linewidth]{baseline_vs_actual.png}
-    \caption{Our data has a clear daily oscilation with a throff at nigth and peak at day. This is a great dataset for a naive seasonal model}
-    \label{fig:placeholder}
+    \caption{Our data has a clear daily oscillation with a trough at night and a peak during the day. This is a great dataset for a naive seasonal model.}
+    \label{fig:baseline-vs-actual}
 \end{figure}
+\subsection{Main Models -- Strengths and Limitations}
+\label{sec:main-models}
 
-The average performance of the baseline across all cities is a MAE of 0.47MW, which amounts to 8.7\%. This is already quite strong and reflects the repetitive nature of our data.
+For consumption forecasting, we evaluated three models: XGBoost, a convolutional neural network (CNN), and a long short-term memory network (LSTM). These were selected to compare gradient-boosted decision trees with neural networks designed to capture temporal patterns. We also explored regional specialization by training separate dense heads for each region on top of a shared CNN.
 
-\subsection{Models}
-\todo{E.g. linear/ridge regression, gradient boosting (LightGBM/XGBoost), possibly SARIMAX or simple NN. One global model vs. one model per area -- justify choice.}
+\subsubsection{Gradient-Boosted Decision Trees (XGBoost)}
 
-We decided to test three different modelling approaches. The first one involves using XGBoost, while the second is using convolutional neural network, with a dense head for regression, as well as a long short term memory network. For the CNN we also experimented with training a unique dense head per region. The model performance, compared to baseline is given below.
-[claude todo: table of model performance]
+XGBoost was selected due to its strong performance on tabular data. Gradient-boosted decision trees can perform well on relatively small datasets and are computationally efficient to train. The main downside with XGBoost, is as discussed in \cref{sec:feature-engineering}, it cannot handle smooth transitions as it needs a hard cutoff for its branching.. It does however provide competitive performance without extensive hyperparameter tuning.
 
-The interesting question is why we chose to use these models. 
+Unlike neural networks, XGBoost does not learn hierarchical feature representations through successive neural layers. It also relies on explicitly engineered features, such as lagged consumption values, to capture temporal dependencies. XGBoost therefore serves as a strong machine learning benchmark, allowing us to evaluate whether the additional complexity of neural network architectures translates into meaningful improvements in forecasting performance.
 
-XGBoost is a data-science favorite and worth implementing due to its high performance, low training time  and wide community support. In practice, XGBoost acts as another baseline, testing whether more complex models provide better performance. XGBoost also excels in datasets where there are strong correlation patterns, such in our case
+\subsubsection{Convolutional Neural Networks (CNN)}
+We selected a one-dimensional CNN due to its ability to identify local repeating patterns in sequential data through shared convolutional filters. In electricity consumption forecasting, such patterns may include daily increases and decreases in demand. The extracted representations are combined with engineered features in a dense head to produce the final predictions. However, the model's ability to capture longer-term dependencies depends on the length of its input sequences and receptive field.
 
-[todo: update this section, based on what models we actually picked] To verify that the performance of XGBoost was reasonable we decided to compare it to a simple neural network. The goal of implementing the NN was to test wether the data contains more hidden patterns that are harder to spot for the ensembler. Unfortunantely, this was not the case as the NN did not signifiantly outperform XGBoost. [claude todo: adjust the languagae to match the actual performance of XGBoost VS NN]
+\subsubsection{Long Short-Term Memory Networks (LSTM)}
+We selected an LSTM to investigate whether modelling sequential dependencies could improve forecasting performance. Unlike a CNN, an LSTM processes observations sequentially and maintains an internal memory state, allowing information from earlier time steps to influence later predictions. This may be useful for capturing gradual changes in consumption patterns. However, LSTMs are more computationally demanding to train and may be prone to overfitting when training data is limited.
 
-\newline
-### Global VS Local model ####
-Training set size:
-The global model has over 38000 rows to train on, splitting this into per city training epochs results in <10,000 rows per city. At that level, training complex models without overfitting becomes harder which means we would have to reduce number of trees for XGBoost and neurons for NN. At that point it is questionable wether the simpler model would be able to have such good predictive power
+\subsubsection{Local models per area:}
+The motivation for training one model per price area is that every price area has a fundamentally different consumption pattern.
 
-Similarity across cities:
-By looking at the data exploration results we can see that the consumption patterns across cities follow a steady pattern.
-\begin{figure}
-    \centering
-    \includegraphics[width=0.8\linewidth]{distribution_of_attributes.png}
-    \caption{Distribution of key attributes across all cities}
-    \label{fig:placeholder}
-\end{figure}
-
-Looking at the top left image (consumption) we see that all cities follow a similar distribution, even though the magnitude of consumption differs. What we see is that the median consumption level is in the lower half of the 25-75-quadrant of the consumption, which signifies that all cities are in a cool climate where heating pushes consumption up, but cooling does not meaningfully push consumption down.
-
-Similarly, when looking at consumption for temperature distribution, we see that all cities fall into the same distribution. This signifies that weather has the same affect across all cities. This is a strong argument for implementing one global model, as temperature has a correlation of -0.79 with consumption, see \figureautorefname{7}. Looking at the rest of the blocks of figure X [todo claude; add correct figure] we see that the weather across the cities is mostly the same. Thus, to summarise, we believe that using one global model is better than local ones because:
-* all cities follow the same distribution with regards to weather
-* all cities consumption is highly correlated to the temperature (-80%)
-* all cities have similar weather patterns
-Due to these three factors, we expect the consumption to behave similarly across all cities. Thus, a single global model will outperform local ones.
-\newline
-## However ##
-Global does fail for some areas: FINLAND; doesnt even beat baseline
-[claude todo: work out this part]
+However, the global models have over 38,000 rows to train on. Splitting this into per-city training epochs results in $<$10,000 rows per city. At that level, training complex models without overfitting becomes harder, which means we would have to reduce the number of trees for XGBoost and neurons for the CNN and LSTM. At that point, it is questionable whether the simpler model would be able to have such good predictive power. Likewise, as seen in section 2.3 we see that the cities have a similar response to temperature, signifying that their underlying patterns are similar.
 
 \subsection{Validation Approach}
 \label{sec:validation}
-\todo{Chronological split (train / validation / test); rolling-origin (expanding window) backtest that simulates daily issuing at 10:00; hyperparameter tuning only on validation period; no random shuffling.}
-\newline
-We are dealing with time series data, and therefore split our data chronologically into an 80-20 split for both models. Train runs from 2022-04-07 $\rightarrow$ 2023-01-14, we then have a 6 day gap to avoid data leakage, and the test set runs from 2023-01-20 $\rightarrow$ 2023-04-03. \newline
+Since we are dealing with time-series data, we have to split it chronologically. We decided for an 80--20 split for all models. The training set runs from 2022-04-07 $\rightarrow$ 2023-01-14, followed by a 6-day gap to avoid data leakage, then the test set running  from 2023-01-20 $\rightarrow$ 2023-04-03.
 
+Both models tune their hyperparameters on the same three consecutive two-week validation windows at the end of the training period: 4--17 December 2022, 18--31 December 2022 and 1--14 January 2023. For each window, the model is fitted on the training data that ends at least six days before the window starts, so the validation mirrors the consumption delay in the train/test split. The test set is never used for tuning, only the validation set. The hyperparameters with the lowest mean MAE over the three windows are then used to refit the model on the full training set, and this model is evaluated once on the test set.
 
-
-Both models tune their hyperparameters on the same three consecutive two-week validation windows at the end of the training period: 4--17 December 2022, 18--31 December 2022 and 1--14 January 2023. For each window, the model is fitted on the training data that ends at least six days before the window starts, so the validation mirrors the consumption delay in the train/test split. The test set is never used for tuning. The hyperparameters with the lowest mean MAE over the three windows are then used to refit the model on the full training set, and this model is evaluated once on the test set.
-
-For XGBoost, we run a grid search (\texttt{GridSearchCV}) over the number of trees (100, 500, 1000), the learning rate (0.025, 0.05, 0.075) and the maximum tree depth (5, 10, 15). This gives 27 combinations, each fitted once per validation window. We chose these windows instead of a standard expanding-window split of the whole training period. With only one year of data, the early folds of such a split, would be fitted on two to five months of summer data and validated on summer and autumn. This represents neither the test period (January to April) nor the final model, which is fitted on nine months of data.
-
-
-
-
-
-
+For XGBoost, we ran a grid search (\texttt{GridSearchCV}) over the number of trees (100, 500, 1000), the learning rate (0.025, 0.05, 0.075) and the maximum tree depth (5, 10, 15). This gives 27 combinations, each fitted once per validation window. We chose these windows instead of a standard expanding-window split of the whole training period. With only one year of data, the early folds of such a split would be fitted on two to five months of summer data and validated on summer and autumn. This represents neither the test period (January to April) nor the final model, which is fitted on nine months of data. Ultimately, we ended up with 1000 estimators, a learning rate of 0.025 and a max tree depth of 5.
 
 For the neural network, we use Optuna on the same windows. We test different numbers of layers, channels and kernel sizes for the convolution, the width and dropout of the dense head, and different values for the learning rate, weight decay and batch size of the optimiser.
----
-The neural network follows a more typical split, using Optuna to find the optimal hyperparameters over 3 consecutive 2-week periods. We test different number of  layers, channels and kernels for the convolution, then experiment with the width and dropout in the dense head, as well as various values for the learning rate, weight decay and batch size for the optimizing.\newline
-Seeing as we are validating our hyperparameters on weeks in December and January, there is a danger that our model is better suited for Winter than Summer, a season that is not tested on.\newline
+\todo{---}
+The neural networks use Optuna to find the optimal hyperparameters over 3 consecutive 2-week periods. We test different numbers of layers, channels and kernels for the convolution, then experiment with the width and dropout in the dense head, as well as various values for the learning rate, weight decay and batch size for the optimisation.
+
+For the LSTM, we test the same values for the dense head, while letting it also optimise for the number of layers and width of its LSTM part.
+
+Seeing as we are validating our hyperparameters on weeks in December and January, there is a danger that our model is better suited for winter than summer, a season that is not tested on.
+
 To counteract this, we limit the number of trials for Optuna to 40, not letting it overfit on cold temperatures.
 
+For the CNN, we end up with one convolution layer, with 16 channels and a kernel size of 5, a width of 32 neurons in the dense head, dropout of 0.24, a $1.5 \times 10^{-3}$ learning rate, $1.3 \times 10^{-4}$ weight decay and a batch size of 256.
 
-
-
+Meanwhile, the LSTM has a width of 128 in its LSTM part and dense head, dropout of 0.29, a $9 \times 10^{-4}$ learning rate, weight decay of $5.7 \times 10^{-6}$ and a batch size of 256.
+\newpage
 \subsection{Evaluation Metrics}
 \label{sec:metrics}
-\todo{MAE (main, symmetric loss), RMSE, MAPE/nMAE for comparing areas of different size, bias (mean error), error by hour of day, error in high-consumption periods (e.g. top 10\% hours / winter).}
 
 MAE is the main metric:
 \begin{equation}
     \text{MAE} = \frac{1}{n}\sum_{t=1}^{n} \left| y_t - \hat{y}_t \right|,
     \label{eq:mae}
 \end{equation}
-where $y_t$ is the actual consumption, $\hat{y}_t$ the forecast and $n$ the number of hours. MAE penalises over- and underforecasting equally and grows linearly with the error. This is in line with how imbalance costs arise for a single retailer: its volume is small relative to each price area, so its own forecast errors do not affect the imbalance price, and the cost grows approximately linearly with the error. RMSE is reported as well, since large errors tend to occur when the power system is under stress and imbalance prices are high.
+where $y_t$ is the actual consumption, $\hat{y}_t$ the forecast and $n$ the number of hours. MAE penalises over- and underforecasting equally and grows linearly with the error. This is in line with how imbalance costs arise for a single retailer: its volume is small relative to each price area, so its own forecast errors do not affect the imbalance price, and the cost grows approximately linearly with the error. To account for the differences in magnitude of regions and hours, we also report nMAE\%.
+
+RMSE is reported as well, since large errors tend to occur when the power system is under stress and imbalance prices are high.
+
+Finally, as mentioned in \cref{sec:success}, the bias is a central metric and should be kept close to 0.
 
 \subsection{Results}
-\todo{Main comparison table and figures: predicted vs. actual for sample weeks, error by hour, error by area and month.}
 \begin{table}[H]
 \centering
-\caption{Test-set performance per model (all areas).}
+\caption{Test-set performance per model, all areas pooled ($n = 10\,495$ hours).}
 \label{tab:results}
 \begin{tabular}{lccccc}
 \toprule
 Model & MAE [MW] & RMSE [MW] & nMAE [\%] & Bias [MW] & Bias [\%] \\
 \midrule
-Same hour last week  & 0.494 & 0.807 & 8.98 & \textbf{0.034} & \textbf{0.62} \\
-XGBoost& 0.336& 0.527& 6.107& 0.150& \\
-Neural network       & \textbf{0.306} & \textbf{0.476} & \textbf{5.56} & 0.095 & 1.72 \\
+Same hour last week & 0.495 & 0.807 & 8.98 & 0.034 & 0.62 \\
+XGBoost             & 0.334 & 0.524 & 6.06 & 0.153 & 2.77 \\
+CNN (global)        & \textbf{0.257} & \textbf{0.378} & \textbf{4.67} & \textbf{$-$0.002} & \textbf{$-$0.03} \\
+LSTM                & 0.284 & 0.415 & 5.15 & 0.008 & 0.15 \\
+CNN (local heads)   & 0.295 & 0.459 & 5.36 & $-$0.181 & $-$3.29 \\
 \bottomrule
 \end{tabular}
 \end{table}
-The final models perform quite well, results appended in the table above. We see that both models outperform the baseline across all metrics, except for bias.
-Some interesting findings include:
 
-[todo: adjust to actual final results]
-All models have a positive bias, meaning they overall overestimate the power consumption by about X\% percent and 1.72 percent, while the baseline only overestimates by 0.62 percent. The baseline performance is just a statistical artifact as the total power predicted for the baseline is the same as actual. Thus, any model that relies on a direct recreation of the existing data (like average) will have a low bias to none bias as total power consumed is equal to actual power.
+Consulting \cref{tab:results}, we see all models do quite well, beating the baseline comfortably.
+
+Furthermore, we are pleased to find that the CNN justifies its added complexity and training time by performing the best in all metrics.
+
+One notable result is the large negative bias of the local heads, indicating that they have a tendency to underestimate the consumption. Meanwhile, XGBoost, with its large positive bias, has a tendency to overestimate the actual consumption. The baseline has a low absolute bias, as its total predicted power consumption in MWh is highly similar to the actual power consumption, lagging by one week. Thus, this metric is artificially low for the baseline, meaning that when considering our models, we should use a pinch of salt.
+
+Likewise, I want to discuss why we choose to consider RMSE, while our MAE is the main metric. RMSE is more sensitive to large errors, as the errors get squared. Thus, a high RMSE paired with a low MAE signifies that the model has few but large errors. An RMSE similar to the MAE suggests that all errors are about equal to one another, with few outliers. Looking at our results, we see that the RMSE is higher than the MAE by a similar factor for all our models ($\text{RMSE} \approx 1.5\,\text{MAE}$). This suggests that the error distribution is the same across all our models. This is positive for the retailer as it means we have zeor to few high imbalance errors.
 
 \subsection{Error Analysis and Robustness}
-\todo{Performance per price area, season, holidays, cold spells; feature importance; sensitivity to temperature forecast error; behaviour at portfolio level shifts.}
+To assess the models and locate areas of improvement, we analyse the errors' distribution across price regions, hour of day, weekday and temperature.
 
+\textbf{Regions:} Unsurprisingly, we find a larger MAE for the regions with higher consumption, like Oslo and Stavanger. Due to the differences in magnitude of consumption between the price areas, we use nMAE\% to evaluate. Consulting Table~\ref{tab:mae_nmae}, we find that our models generally have the same level across all areas, except for Helsingfors, where we see a drop in error across all approaches. This improvement is much more pronounced for the baseline, dropping from $\sim$10\% to 2.12\%, and XGBoost, $\sim$7\% to 2.47\%, while the complex models see more modest improvements. 
 
+An interesting finding is that the baseline is the top performer in Helsingfors. This is simultaneously expected and surprising. On one hand, it has less training data, which should mean worse performance, but on the other hand, it has much more stable consumption compared to temperature \todo{(reference to figure)}. We speculate that the straightforward relationship between the temperature and consumption could be part of why the simpler models work so well for Helsingfors.
+
+\textbf{Hour of day:} In Figure~\ref{fig:hod/weekday} (left plot), we find a pattern for the neural networks where errors, reported in nMAE\% to stop Oslo from dominating, peak in the morning and afternoon. The morning and afternoon are typically when power usage peaks, which is troublesome, as correcting imbalances in these hours is likely more costly for Aneo's customers.
+
+\textbf{Weekday:} We struggle to find a consistent pattern in errors for the different weekdays (Figure~\ref{fig:hod/weekday}, right plot).
+
+\textbf{Temperature:} In the Nordic countries, power usage naturally peaks when it is the coldest. Since we believe that the cost of an imbalance is higher during peaks, we are interested in whether errors peak too during extreme weather. Dividing the test set into deciles on temperature, we see the nMAE\%-curves are flat for XGBoost and the neural networks (Figure~\ref{fig:temperrs}). Meanwhile, the baseline struggles with the lowest decile of temperatures, indicating that its inductive bias of assuming weekly repetition struggles when a mild week is followed by a cold week.
 
 \subsection{Technical Limitations}
-\todo{Limited history, single weather variable, one location per area, test period representativeness.}
+With only one year of data available, we face limitations in the training and testing of our models.
 
-With only one year of data available, we face limitations in training and testing of our models. \newline
-Although the models are able to learn general trends, such as the inverse relationship between temperature and consumption, more specific events such as Christmas are past the cutoff point of the training data and thus not trained on. Adding on, we are also relying on our year of data not being an outlier year, for the models to generalize well to other years. \newline
-On a more positive note, as more data becomes available, we can retrain the models with more features and datapoints, and possibly see an increase in performance.\newline
+Although the models are able to learn general trends, such as the inverse relationship between temperature and consumption, more specific events such as Christmas are past the cutoff point of the training data and thus not trained on. Adding on, we are also relying on our year of data not being an outlier year for the models to generalise well to other years.
 
-Furthermore, the lack of data hampers our ability to assess the models' performance.\newline
-First, because the test-set is quite small we experience high statistical variance with only 2 months of data to test on, leaving us vulnerable to outliers.\newline
-Second, we can only test our models on a period from late Winter to early Spring. Meaning that our metrics only tells us the models' performance in this period, and not how they will fare in Summer and Autumn. With a larger dataset, we could test on an entire year, and get a better understanding of the models' generalization.\newline
+On a more positive note, as more data becomes available, we can retrain the models with more features and data points, and possibly see an increase in performance.
 
-Another limitation stems from the location column. The cities listed are the largest cities in each region, but the regions are quite large and we have no information on where in a region Aneo's customers live. For instance we currently use weather-data for Tromsø to predict the consumption of power for consumers in Bodø and Honningsvåg, which are 614 km apart.
+Furthermore, the lack of data hampers our ability to assess the models' performance.
+
+First, because the test set is quite small, we experience high statistical variance with only 2 months of data to test on, leaving us vulnerable to outliers.
+
+Second, we can only test our models on a period from late winter to early spring, meaning that our metrics only tell us the models' performance in this period, and not how they will fare in summer and autumn. With a larger dataset, we could test on an entire year and get a better understanding of the models' generalisation.
+
+Another limitation stems from the location column. The cities listed are the largest cities in each region, but the regions are quite large, and we have no information on where in a region Aneo's customers live. For instance, we currently use weather data for Tromsø to predict the consumption of power for consumers in Bodø and Honningsvåg, which are 614\,km apart.
+\newpage
 
 % =====================================================================
 % Ansvarlig: Thomas & Truls
@@ -739,97 +762,207 @@ Another limitation stems from the location column. The cities listed are the lar
 \subsection{From Forecast Error to Imbalance}
 \label{sec:imbalance}
 \todo{Introduce: since each value is an hourly average in MW, the absolute forecast error for one hour equals the imbalance in MWh. Then define:}
+
+As seen, our forecasting models have quite strong predictive power, with a globally defined CNN coming out on top. However, the retailer cares about the total imbalance in MWh (section 1.5), not in the nMAE model performance. Therefore we introduce the following metric, meassuring the imbalance in MWh over areas a and hours t.
 \begin{align}
     I &= \sum_{a=1}^{6}\sum_{t=1}^{n} \left| y_{a,t} - \hat{y}_{a,t} \right| \cdot 1\,\text{h}, \label{eq:imbalance} \\
     \Delta I &= \frac{I_{\text{baseline}} - I_{\text{model}}}{I_{\text{baseline}}} \times 100\,\%, \label{eq:reduction}
 \end{align}
-where $I$ is the total absolute imbalance in MWh, summed over all price areas $a$ and hours $t$, and $\Delta I$ is the percentage reduction in imbalance compared with the baseline. \todo{Define large errors, e.g. errors above the 90th percentile of the baseline's absolute errors.}
+where $I$ is the total absolute imbalance in MWh, summed over all price areas $a$ and hours $t$, and $\Delta I$ is the percentage reduction in imbalance compared with the baseline. Our final results for every city are given in \cref{tab:imbalance-cost}.
 
-\subsection{Business KPIs}
-\todo{Total absolute imbalance (MWh) per area and in total; \% reduction vs. baseline; frequency of large errors (e.g. $>$ X\% of consumption); \% of hours within acceptable error band; reliability across areas and periods (worst month/area).}
 \begin{table}[H]
 \centering
-\caption{Business KPIs on the test period. \todo{fill in}}
-\label{tab:business}
-\begin{tabular}{lccc}
+\caption{Total absolute imbalance and estimated imbalance cost on the test period, summed over all six price areas.}
+\label{tab:imbalance-cost}
+\begin{tabular}{lrrrr}
 \toprule
-KPI & Baseline & Best model & Change \\
+Model & $I$ [MWh] & $\Delta I$ [\%] & Cost [EUR] & $\Delta$Cost [\%] \\
 \midrule
-Total abs. imbalance [MWh]      & -- & -- & -- \\
-Hours with large error [\%]     & -- & -- & -- \\
-Hours within tolerance [\%]     & -- & -- & -- \\
-Est. imbalance cost [EUR]       & -- & -- & -- \\
+Same hour last week (baseline) & 5,192.1 & 0.0  & 76,760 & 0.0 \\
+XGBoost                        & 3,504.3 & 32.5 & 50,853 & 33.8 \\
+\textbf{CNN}                   & \textbf{2,697.4} & \textbf{48.0} & \textbf{43,747} & \textbf{43.0} \\
+LSTM                           & 2,979.0 & 42.6 & 48,137 & 37.3 \\
+Local heads                    & 3,097.5 & 40.3 & 47,899 & 37.6 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Estimated Imbalance Cost (optional)}
-\todo{If price data is found: cost$_t \approx |\hat{y}_t - y_t| \cdot |p^{\text{imb}}_t - p^{\text{spot}}_t|$. State assumptions and simplifications clearly. Otherwise use a sensitivity range of price differences.}
--vi har ingen informasjon om hva det koster for Aneos kunder. Foreslår å droppe denne (Truls)
+As we see, the CNN cuts the total imbalance in MWh by almost half, which is of great value for the retailer. However, what is interesting to note is that the cost reduction is not 1:1 correlated with the reduction in imbalance. The key reason for this is that the imbalance market is also affected by the demand side. Thus, if our model has a positive imbalance, and there is an equal positive imbalance on the demand side, the retailer will not have to pay imbalance costs. Likewise, if the imbalances pull in opposite directions, our imbalance costs will grow by more than the imbalance MWh. This phenomenon explains the discrepancy between our imbalance MWh reduction of 48\% for the CNN versus an imbalance cost reduction of just 43\%. Due to this discrepancy between the reduced imbalance in MWh and in €, we use MWh as our main KPI.
+
+\subsection{Business KPIs}
+\todo{Total absolute imbalance (MWh) per area and in total; \% reduction vs. baseline; frequency of large errors (e.g. $>$ X\% of consumption); \% of hours within acceptable error band; reliability across areas and periods (worst month/area).}
+
+As stated in \cref{sec:success}, our main Business KPI is  \textit{total imbalance reduction in MWh.  }However, it is till interesting to consider total reduced imbalance costs \textit{total hours with an imbalance error over a given threshhold}
+
+By breaking down the total imbalance costs per city, \cref{fig:imbalance-per-city}, we get a better idea of the value for the retailer.
+
+\begin{figure} [H]
+    \centering
+    \includegraphics[width=0.75\linewidth]{imabalance_per_city.png}
+    \caption{Imbalance per city}
+    \label{fig:imbalance-per-city}
+\end{figure}
+
+An interesting finding emerges in the data. Helsingfors is an outlier, where our models did not improve on the baseline. In addition to that, Helsingfors already has the lowest imbalance as a percentage of consumption among the price areas.
+
+This matters a lot for the retailer, as our model is not able to provide value for retailers in Helsingfors. Thus, we fail to meet our business KPIs for this city. For the other cities, our model performance is strong, significantly improving on business KPIs.
+
+Looking at the threshhold, we see that over the two month testing window, spanning all six cities and 10,495 hours, only 15 hours have an imbalance >10\% of consumptonm. This is ullustrated in  \Cref{fig:error-exceedance}. This is a highly relevant metric for the retailer, as it signifies we have extremely few hours with large imbalance costs.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\linewidth]{error_exceedance.png}
+    \caption{Error exceedance}
+    \label{fig:error-exceedance}
+\end{figure}
+
 
 \subsection{Value for the Retailer and for Aneo}
 \todo{Retailer: reduced financial exposure and risk. Aneo: higher service value $\rightarrow$ satisfaction, retention, contract renewal. Discuss how this could be measured (renewal rate, satisfaction surveys, accuracy SLA).}
 
+Although Aneo does not directly benefit from good predictions, its customers, the retailer, do. Thus, a strong model which saves money for the retailer through decreasing imbalances, creates value for Aneo through customer satisfaction, and thereby customer retention and possibly new business.
+
+It is therefore clear that the previous KPIs measure direct business value for the retailer, and indirectly for Aneo. Since our client is Aneo, we should provide direct evidence of the value our model creates for them. We can achieve this in a number of ways: by measuring the renewal rate, conducting satisfaction surveys and establishing service-level agreements (SLAs).
+
+Renewal rate is easy to measure, but it is also a lagging signal that can be hard to interpret. If the model performs well, all else being equal, we would expect it to increase or stay the same after deployment. However, in the real world, we seldom have ``all else equal''. In practice, then, it will be hard to tell whether a decrease in the renewal rate is due to customers being unsatisfied with the service or to other exogenous shocks unrelated to Aneo's service.
+
+Therefore, we should also conduct customer satisfaction surveys. \todo{(Jørgen kan dette være noe å monitorere, evt bruke som et tegn på at modell må trenes på nytt?)} This helps Aneo learn how the clients experience their service and lets us better understand the renewal rate.
+
+Finally, to decrease the uncertainty regarding the clients' expectations of Aneo, we can establish service-level agreements (SLAs), the external promise of performance Aneo makes to the retailer. There are several requirements we can imagine a retailer will have of Aneo: timeliness of predictions, average imbalance (nMAE\%) per month per area, percent of hours within an acceptable range of ground truth, and improvements in nMAE\% over the baseline. The specific numbers for what percentage of predictions should arrive within the 10:00 cutoff, and for what range of hourly imbalance is allowable, are something Aneo should arrive at in consent with individual clients, as they may have different priorities and tolerances.
+
 \subsection{Costs, Risks and Trade-offs}
 \todo{Development and operating cost vs. value; model complexity vs. interpretability/maintenance; risk of large errors in extreme weather; dependence on weather provider and data delivery.}
 
+\textbf{Risks:}
+A key risk for our solution is model drift. Model drift occurs when the model is trained on period a under a specific market regime. As time moves on, the dynamics of the market fundamentally change, resulting in new patterns, which the model is not adapted to. This degrades performance over time, removing business value \cite{ibm_model_drift}.
+
+In our case, model drift occurs when there is a change in the dynamics of the power market. Some key examples include the introduction of Norgespris, which significantly changes consumer behaviour by reducing consumer price sensitivity. Likewise, other infrastructure changes, such as new power cables being connected, like those under the EU ACER agreement, will significantly affect the market dynamics.
+
+\textbf{Costs:}
+To battle model drift, regular retraining is needed. That is, training the model on newer data so that it can pick up on new patterns. The key issue here is that regular retraining and redeployment come with additional costs from active personnel maintenance in addition to compute costs. Thus, there is a key trade-off to be made between continuously retraining the model to match new data and only training every now and then, when the model performance degrades below a set threshold.
+
+\textbf{Trade-offs:}
+A key trade-off, in addition to cost--performance, is performance--complexity. A more complex model will have the ability to pick up on weaker and more complex patterns, as demonstarted with the CNNs ability to pick up on patterns from wind, that XGBoost was unable to in \cref{sec:feature-engineering}, resulting in higher performance.
+
+In a similar manner, there is a trade-off between acquiring more data and model performance. By acquiring more data that is correlated with consumption, we will be able to significantly improve model performance. However, this will come at the cost of licensing data and managing more data streams.
+
 \subsection{Recommendations}
 \todo{Which model to deploy (possibly per area), whether it is good enough to justify continued service, suggested accuracy SLA, what to improve next (more weather variables, shorter data delay, etc.).}
+
+\todo{-CNN, but separate solution for helsingfors?
+-Shorter data delay should be priority
+-}\newline
+In the previous chapters, we have proposed 5 approaches and evaluated their analytical performance and business value. We found that the CNN won out in all metrics on the aggregate for the test-set. Moreover, it is the model with the fewest large errors, the lowest total imbalance (exluding baseline) and the one who exposes the retailer to the least amount of financial risk.
+
+Furthermore, we believe the CNN has an acceptable amount of complexity, its training takes around significantly longer than XGBoost, but an order of magnitude shorter than the LSTM. This is an important quality, as we highlighted with the risk of model drift. Thus we expect  to retrain the model regurarly as paradigms shift and new data becomes available.
+
+Putting a damper on our solution is all of the models weak performance on Helsingfors (\cref{fig:imbalance-per-city}). There we saw the baseline outperform all other approaches, likely due to the stable power consumption reported in the region (\cref{fig:daily-profiles}).
+
+We therefore recommend proceeding with the CNN for all areas except Helsingfors, where the baseline or existing solution should be used. However, we still recommend setting in an effort for developing a custom model for Helsingfors, specializing on its different consumption pattern. 
+\newpage
+
+
+
+
+
+
+
+
 
 % =====================================================================
 % Ansvarlig: Camilla & Jørgen
 \section{Deployment and Production Readiness}
 \label{sec:deployment}
-\pagetarget{3--5}
+The developed models, and especially the global CNN, forecast the retailer’s hourly electricity consumption for the next day with better performance than the same-hour-last-week baseline. However, good test-set results alone do not guarantee that a model is suitable for daily operation, particularly because the performance evidence so far is limited. The models are trained only on about one year of data and tested only on a two-month period covering late winter and early spring. This means that we do not know how they perform in summer and autumn, or in other years. Furthermore, Aneo’s existing forecasting method is unknown, so we cannot say whether the CNN improves on what the retailer already receives. We therefore propose a simple system that is tested further and gradually introduced alongside Aneo’s existing forecasting method.
 
-\subsection{Deployment Strategy}
-Inaccurate or delayed forecasts can lead to imbalances and additional costs for the electricity retailer. The current prototype performs well on the test set, but this does not guarantee that it will perform equally well in daily operation. The solution must also be able to handle missing data and technical failures, which could otherwise disrupt the forecasting process. Thus, to ensure reliable forecasts in daily operation, a four-stage deployment approach is proposed:
+\subsection{Production Architecture}
+The forecasting prototype must be turned into a system that delivers 24 hourly values for each of the six price areas by approximately 10:00 every day. Metered consumption arrives with a delay of about five days, and the weather forecast for the target day is available when the forecast is made. Since the retailer needs only one forecast per day, issued at a fixed time, the system does not need to produce predictions on demand or in real time. It only needs to use the latest data available at the time of the run.
 
-\textbf{1. Prepare the prototype for deployment} The first step is to convert the current forecasting prototype into an automated pipeline. Each day, the pipeline should automatically collect the necessary data, prepare the input features, and predict electricity consumption for the following day. The daily operational workflow is described in more detail in Section 5.2.
+We therefore propose a \textit{scheduled batch pipeline}. This is a program that runs at fixed times, collects the data that has arrived since the previous run, computes predictions for all inputs in a single job, and stores the results for delivery \cite{google_batch_inference}. In our case, this has three advantages:
 
-\textbf{2. Test the solution in a realistic environment} Before deployment, the proposed forecasting solution should be tested under realistic conditions. This can be done in shadow mode, where the solution runs alongside Aneo's existing forecasting process. This allows Aneo to evaluate the solution's reliability in practice, without affecting the forecasts delivered to the electricity retailer. The testing should also ensure that the automated pipeline only uses data available at the time of prediction and can handle missing data and technical failures.
+\begin{enumerate}
+    \item The pipeline only runs when a forecast is needed, once per day.
+    \item  A failed run can be repeated before the 10:00 deadline.
+    \item The whole forecast is produced in one run, so it can be checked for completeness and plausible values before it is delivered.
+\end{enumerate}
 
-\textbf{3. Conduct a limited pilot} If the testing confirms the promising results from the test set, the solution should first be deployed in a limited pilot involving one or two price regions. Regions with relatively low electricity consumption are preferred, since forecast errors have a smaller impact there. Aneo's existing forecasting system would continue to handle the remaining regions. During the pilot, Aneo should monitor the KPIs defined in Section \textcolor{red}{X.X} to evaluate the new solution's model and business performance. This allows Aneo to assess the solution under real operating conditions while limiting the financial risk for the electricity retailer.
-
-\textbf{4. Full deployment} If the solution meets the acceptance criteria defined in Section \textcolor{red}{X.X}, it can gradually be introduced in all six price regions. Before full deployment, monitoring procedures, fallback mechanisms, and clear responsibilities must be established. This includes deciding which team at Aneo will take responsibility for operating and maintaining the model, who will be responsible for its performance, and how technical failures should be handled. 
-
-
-\subsection{Operational Workflow}
-% Tip: architecture/workflow diagram
-
-Aneo’s operational workflow covers the process of generating and delivering hourly electricity consumption forecasts to the electricity retailers. The consumption forecasts are generated daily at 10:00, providing 24 hourly consumption predictions for the following day across five Norwegian price areas and one Finnish price area, as described in Section X.
-
-The process begins with the forecasting model collecting the latest available consumption data, weather forecasts, and calender information. The weather inputs include forecasted temperature, snowfall, wind direction, wind speed, and rainfall, while the calendar information includes the hour of the day and public holidays. The input variables are selected based on the analysis presented in Figure 7, with the model accounting for their historical importance in each price area (?). These inputs are then used to predict hourly electricity consumption across all six price areas.
-
-Once generated, the forecasts gets validated by Aneo to ensure that they are complete and within reasonable consumption ranges (Kilde?). The operational workflow is completed when the validated forecasts are successfully delivered to the electricity retailers before the day-ahead gate closure. 
-
-The operational workflow is illustrated in Figure X below.
-\usepackage{}
+The proposed architecture is shown in Figure~\ref{fig:production-architecture}.
 \begin{figure}[H]
     \centering
-    \includegraphics[width=1\linewidth]{Dataflyt for energiforbrukprognoser.png}
-    \caption{Operational workflow for day-ahead hourly electricity consumption forecasting}
-    \label{fig:operational_workflow}
+    \includegraphics[width=0.80\textwidth]{production_architecture.png}
+    \caption{Proposed production architecture. Validated inputs are turned into features and passed to the forecasting model. The dashed paths show the fallback, which is used when missing inputs cannot be recovered, the model fails, or the output check fails. A scheduler starts the daily run, while versioning and logging support the whole workflow.
+}
+    \label{fig:production-architecture}
 \end{figure}
+\textbf{Data ingestion and validation.} The pipeline needs three inputs: metered consumption from the data hub (Elhub or Datahub), weather forecasts from a provider, and calendar information. Because metered consumption arrives with a delay of about five days, a forecast made on day \textit{D} for day \textit{D + 1} may only use consumption up to day \textit{D - 5}. To prevent accidental use of newer and unavailable data, the pipeline stores the time each value was received and uses only data that was available at forecast time. The pipeline also checks the input data for errors before using it, such as external input data that has not arrived on time. If an error cannot be resolved, the fallback described in Section 5.2 is used.
 
-\subsection{System Components}
-\todo{Data ingestion (meter data, weather API), feature pipeline, model registry, scheduler (e.g. cron/Airflow), output delivery (API/file), storage of forecasts and actuals for evaluation.}
+\textbf{Feature preparation. }A preparation step then checks the inputs and turns them into the features the model expects. The same step is used for both training and the daily run, so that the model receives data in the same format in both cases. Calendar features, such as hour of the day and weekday, are calculated in local time for Norway or Finland, as described in Section 3.2. Twice a year, when the clocks change, a local day has 23 or 25 hours instead of 24. On these days the forecast must cover 23 or 25 hours, depending on which way the clock is turned. The delivery format agreed with the retailer should specify how the extra or missing hour is labelled.
 
-\subsection{Fallback and Robustness}
-\todo{If data or model fails: fall back to baseline (same hour last week) so a forecast is always delivered on time; sanity checks on output (non-negative, plausible range).}
--vi nevner knn for å håndtere manglende verdier ved inference time. Kan fjerne det i 3.2 og nevne her istedet kanskje(Truls)
+\textbf{Forecasting.} The model step loads the forecasting model(s) and produces the forecast. The global CNN is the leading candidate based on the test results in Section 3.8, but the system should not be tied to a single model. In Helsingfors, the same-hour-last-week baseline had lower error than the CNN (Table 8). The system should therefore allow different models for each price area, making it possible to select the most suitable model based on its performance in each area.
 
-\subsection{Testing and Validation before Deployment}
-\todo{Unit tests of feature code (especially leakage tests: no data newer than D$-$5), data validation (schema, missing hours, DST), backtesting, shadow mode in parallel with existing process, acceptance criteria vs. baseline.}
+\textbf{Output validation and delivery.} Before delivery, the forecast is checked. Every hour in every price area should have a value, and the values should be within a plausible range. If this check fails, or if missing inputs cannot be recovered, the fallback mechanisms described in Section 5.2 is used. The forecast is then sent to the retailer through a secure interface that the two parties have agreed on. The system also records the delivered forecasts, their delivery times, and the models and data used to generate them. This documents what the retailer received and allows the forecast to be compared with actual consumption once it becomes available.
 
-\subsection{Reproducibility and Versioning}
-\todo{Git for code, versioned data snapshots, model registry with version + training period, fixed environments (requirements/Docker), logged forecasts.}
+Beyond this, the system needs a scheduler that starts the daily run, storage for inputs and forecasts, and logs of failures and deliveries. These can start as one simple setup, with the possibility of expanding the infrastructure as the requirements grow.
 
-\subsection{Security and Compliance}
-\todo{Consumption data is commercially sensitive; access control; agreements between Aneo and retailer; aggregated data limits GDPR concerns.}
+\subsection{Operational Workflow and Fallback Mechanisms}
+Each day, the scheduler should start the pipeline sufficiently before 10:00 to allow time for input checks, forecasting, delivery, and possible fallbacks. The workflow sequence is: \textit{collect inputs, validate data and construct features, generate forecasts, check outputs, and deliver the results}. The process is complete once the validated forecasts have been successfully delivered to the electricity retailer before the day-ahead gate closure. Each stage should also report any failures, allowing issues to be detected and resolved before they affect forecast delivery.
 
-\subsection{Scalability and Staged Deployment}
-\todo{Pilot in one or two areas $\rightarrow$ shadow mode $\rightarrow$ full rollout; easy to add new areas/retailers; rollback plan.}
+\textbf{Input failures.} Although the historical dataset contains no missing observations, there is still a possibility of missing values at inference time. To address this, Section 3.2 evaluated a protocol for handling missing data, with promising results. The protocol is therefore a suitable candidate for handling missing values in production. However, since it was tested using XGBoost rather than the better-performing CNN, further testing is needed to confirm that it also works well with the CNN before deployment. If the missing inputs cannot be recovered by the protocol, the system should switch to a pre-approved fallback model that can generate forecasts using the remaining available information.
+
+\textbf{Model failures.} If the forecasting model fails, the system should first attempt to resolve the issue and rerun the forecast before the deadline. If the problem remains, a pre-approved fallback should be used. This could be Aneo's existing forecasting method or the simpler same-hour-last-week baseline. An advantage of the baseline is that it only requires historical consumption data, making it a reliable alternative when external data are unavailable, provided that the required consumption measurements are available. However, since the performance of Aneo's existing solution is unknown, both alternatives should be evaluated before deciding which to use as the fallback. 
+
+\textbf{Forecast validation failures:} Before delivery, the system should also check that the forecast contains all required hours and price areas, with no missing, duplicate or unrealistic values. Unusually high predictions should be reviewed rather than automatically rejected, as they may reflect actual peaks in electricity consumption. In this application, delivering a complete and credible forecast on time is at least as important as obtaining a small improvement in forecast performance.
+
+\textbf{Delivery failures.} Even if the forecasting model produces valid forecasts, technical issues may prevent them from reaching the retailer. If delivery fails, the system should automatically retry within the available time before the deadline at approximately 10:00. If repeated attempts fail, an alternative delivery method should be used, such as sending the forecasts through a backup interface. All delivery attempts should be logged, and the system should confirm that the retailer has received the forecasts. This ensures that technical delivery problems do not prevent the retailer from receiving the information needed for its day-ahead planning.
+
+\subsection{Testing and Validation Before Deployment}
+
+The results in Section 3 show that the models beat the baseline on historical data. However, the test set is very limited. Furthermore, good results on historical data do not show that the production system will work reliably under realistic conditions, or that it is better than what the retailer receives today. We therefore propose three stages of testing and validation prior to deployment, each answering one question: \textit{(1) does the pipeline run correctly}, \textit{(2) are the forecasts as accurate under realistic conditions as the test set suggests}, and \textit{(3) are they better than Aneo's existing forecasts?}
+
+\textbf{(1) Does the pipeline run correctly?} Four tests are needed to check different ways in which the pipeline could go wrong. \textit{Leakage tests} check that the pipeline only uses data available at forecast time. \textit{Replay tests} check that the pipeline reproduces the results of the prototype. \textit{Data tests} check that faulty inputs are caught, and \textit{failure tests} check that a valid forecast is delivered on time even when something goes wrong.
+
+\textit{Leakage tests.} Data leakage occurs when a model uses information that would not be available at forecast time, potentially making its performance appear better than it actually is. To prevent this, the leakage checks implemented in Section 3.1 should become automatic tests in the production pipeline. These tests scrambles all values that would not yet be known when a day is forecast, rebuilds the features, and checks that the features for that day are unchanged. If they change, the pipeline is using data it should not have. The tests should run whenever the feature code is updated or the model is retrained, ensuring that future changes do not introduce data leakage.
+
+\textit{Replay tests. }Once the pipeline has been developed, it should be tested by running it day by day over the test period from Section 3. The resulting forecasts from the pipeline should then be compared with those produced by the original prototype. The results should be identical or show only minor numerical differences, which may occur due to differences caused by rounding or software versions. This ensures that converting the prototype into an automated pipeline has not unintentionally changed how data are processed or forecasts are generated, for example through incorrect time-zone handling. Any significant differences should be investigated and resolved before deployment.
+
+\textit{Data tests.} The pipeline checks its input data for errors before using it (Section 5.1). These checks should be tested with data where errors have been added on purpose, to confirm that they are caught. The tests should also include the two days a year when the clocks change and the day has 23 or 25 hours. These days are not errors, but they are easy to handle wrongly. If the clock change is handled incorrectly, all hours after it are shifted by one hour until the next change. Consumption changes quickly in the morning and evening, so even a one-hour shift can give large errors, and the retailer may nominate the wrong amount for the wrong hours. Because this happens only twice a year, it may not be noticed in normal operation, so it must be tested in advance.
+
+\textit{Failure tests. }The failures described in Section 5.2 (i.e., input failures, model failures, forecast validation failures and delivery failures) should be simulated, both individually and in combination. Failures are rare, so without simulation the first real test of the fallback would be a day when it is actually needed. A failure test should only pass if the system successfully delivers a valid forecast for the correct date and price area before the deadline, either through the original model or a fallback. Ensuring timely forecast delivery, even when failures occur, is particularly important because the retailer depends on these forecasts to plan its electricity demand nominations. Without a reliable forecast, the retailer has nothing to base its nomination on, which can lead to large imbalances and dissatisfaction with Aneo’s service.
+
+\textbf{(2) Are the forecasts as accurate under realistic conditions as the test set suggests?} The models were trained and tested on data from 2022–2023, with the held-out test period concentrated in winter and early spring. Thus, we do not know how the models will perform in other seasons. The data is also more than three years old, and the electricity market may have changed a lot since then. For example, Norgespris, introduced in 2025, reduces price sensitivity for the consumers it covers, and the retailer’s customer portfolio may be very different. Any of these changes could make the results worse than the test set suggests. In addition, some weather variables used in the evaluation, such as rain, are observations and not forecasts that would have been available the day before (Section 2.5). This may overstate the performance of the models. Before the test results can be trusted, Aneo should therefore (a) test the models again on recent data that covers all seasons and the period after Norgespris was introduced, retraining them if needed, and (b) obtain archived weather forecasts issued before 10:00 on each day and repeat the test with them.
+
+\textbf{(3) Are the forecasts better than Aneo’s existing forecasts?} Aneo’s current forecasting method is unknown, so we cannot yet determine whether the new models perform better. If Aneo has archived its previous forecasts, a comparison can first be conducted using historical data. However, a historical comparison only provides an indication of whether the new models will outperform Aneo’s existing method. If the new solution performs worse than Aneo's current method in daily operation, the retailer could face higher imbalance costs and become dissatisfied with the service. Therefore, to gain greater confidence that the new forecasts outperform Aneo's existing forecasts, we also propose running the pipeline in shadow mode. Shadow mode means that the system produces forecasts every day under real operating conditions, but these forecasts are not delivered to the retailer \cite{samiullah_shadow_mode}. Once actual consumption data become available five days later, the new forecasts can be compared with Aneo’s existing forecasts for the same days.
+
+\textbf{Acceptance criteria.} Although the CNN performed best in most of the price areas (Figure \ref{fig:imbalance-per-city}), the simpler same-hour-last-week baseline outperformed it in Helsingfors. Therefore, the decision on whether to deploy a new model, and which model to use, should be made separately for each price area. A model should only move on to a pilot in a price area if it meets the following acceptance criteria during the shadow-mode period:
+
+\begin{enumerate}
+    \item \textit{Technical performance:} Lower MAE than both Aneo's existing forecasts and the same-hour-last-week baseline, with a bias close to zero.
+    \item \textit{Business value:} Lower total imbalance (MWh) and fewer hours with large forecast errors than both Aneo's existing forecasts and the same-hour-last-week baseline, with reduced imbalance costs for the retailer.
+
+    \item \textit{Operational reliability:} Forecasts must be generated and ready for delivery before 10:00 every day, using only available data and requiring fallbacks on only a small proportion of days.
+\end{enumerate}
+
+The exact thresholds should be agreed upon before the shadow-mode period begins. This prevents the thresholds from being adjusted to fit the observed results. If a model does not meet the acceptance criteria for a particular price area, the existing forecasting method should be retained until the new model has been improved and shown to meet the criteria.
+
+\subsection{Reproducibility, Security and Scalability}
+
+\textbf{Reproducibility and versioning.} Actual consumption data arrive with a delay of about five days. Therefore, forecast errors may only become apparent five or more days after the forecasts were made. By that time, the code or model may have changed. Aneo should therefore record which code and model versions were used to generate each delivered forecast. This makes it possible to reproduce previous forecasts, investigate unexpected errors and return to an earlier model if an updated version performs worse. In practice, Git can be used to track code changes, while model versions can be stored together with the forecasts they produced.
+
+\textbf{Security.} Although the consumption data are aggregated by price area, they may still contain commercially sensitive information about the retailer. Access to these data should therefore be restricted to authorized personnel, and data transfers between the metering data hubs, Aneo and the retailer should be secure.
+
+\textbf{Scalability.} Since the system only needs to generate forecasts once per day for six price areas, a relatively simple infrastructure should be sufficient. However, the system should be designed so that additional price areas or retailers can be added without major changes. The infrastructure can then be expanded as the requirements grow.
+
+\subsection{Deployment Strategy}
+
+Even if the models meet the acceptance criteria in Section 5.3, replacing Aneo's existing forecasting solution immediately would introduce unnecessary risk exposure for the retailer. We therefore propose a gradual deployment strategy, where the new solution is introduced in stages and evaluated before expanding its use.
+
+\textbf{Stage 1 - Shadow mode.} The first stage is the shadow-mode described in Section 5.3. During this period, the new solution runs alongside Aneo's existing forecasting method without affecting the forecasts delivered to the retailer. This allows Aneo to evaluate the new models under real operating conditions, fine-tune them based on the results, and determine which price areas meet the acceptance criteria before moving to the next stage.
+
+\textbf{Stage 2 - Limited pilot.} If the shadow-mode results are satisfactory, the new solution should first be introduced in one or two selected price areas. These areas should be chosen based on the improvements demonstrated during testing and the potential financial risk for the retailer. During the pilot, the retailer would use the new forecasts in the selected areas, while Aneo's existing solution continues to serve the remaining areas. The existing method should also remain available as a fallback in case the new solution performs worse than expected. This allows Aneo to evaluate the solution in daily operation while limiting the consequences of potential failures.
+
+\textbf{Stage 3 - Gradual rollout.} If the pilot confirms that the solution is reliable and provides sufficient improvements, it can gradually be introduced in additional price areas. Each area should be evaluated separately, and the existing forecasting method should be retained where the new solution does not provide an improvement. Before expanding, Aneo should also ensure that the necessary monitoring procedures, fallback mechanisms and responsibilities are established, as discussed in Section 6.
+
+Throughout the deployment process, Aneo should be able to return to its existing forecasting method if the new solution fails or no longer meets the agreed performance requirements. This reduces the risk for the retailer while allowing Aneo to benefit from the improvements demonstrated by the new models.
 
 % =====================================================================
 % Ansvarlig: Camilla & Jørgen
@@ -874,10 +1007,14 @@ Extreme weather & Temp. outside training range & Manual review & Aneo forecast t
 \label{sec:conclusion}
 \todo{Summarise the chain: problem $\rightarrow$ data $\rightarrow$ analysis $\rightarrow$ evidence $\rightarrow$ decision/value $\rightarrow$ deployment $\rightarrow$ monitoring. Answer the business question: is the solution reliable and valuable enough? Limitations and future work.}
 
+\newpage
+
 % =====================================================================
 % References (entries are in references.bib)
 \bibliographystyle{plain}
 \bibliography{references}
+
+\newpage
 
 \appendix
 \section{Additional Figures and Tables}
@@ -930,5 +1067,47 @@ $k$ & MICE + model & One model per pattern & Weather and calendar model \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\subsection{Error analysis tables and plots}
+\begin{table}[H]
+\centering
+\caption{MAE [MW] and nMAE\% per price area and model.}
+\label{tab:mae_nmae}
+\setlength{\tabcolsep}{4pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l*{10}{c}}
+\toprule
+ & \multicolumn{5}{c}{MAE} & \multicolumn{5}{c}{nMAE\%} \\
+\cmidrule(lr){2-6} \cmidrule(lr){7-11}
+Area
+ & \shortstack{Same hour\\last week} & XGBoost & \shortstack{CNN} & LSTM & \shortstack{Local\\heads}
+ & \shortstack{Same hour\\last week} & XGBoost & \shortstack{CNN} & LSTM & \shortstack{Local\\heads} \\
+\midrule
+NO1 Oslo       & 1.30 & 0.84 & 0.58 & 0.62 & 0.78 & 10.67 & 6.92 & 4.73 & 5.04 & 6.35 \\
+NO2 Stavanger  & 0.59 & 0.47 & 0.31 & 0.37 & 0.29 & 10.51 & 8.24 & 5.42 & 6.57 & 5.12 \\
+NO3 Trondheim  & 0.41 & 0.23 & 0.17 & 0.22 & 0.20 & 11.25 & 6.27 & 4.65 & 5.99 & 5.67 \\
+NO4 Tromsø     & 0.18 & 0.11 & 0.10 & 0.09 & 0.12 &  9.41 & 5.81 & 5.43 & 4.54 & 6.11 \\
+NO5 Bergen     & 0.35 & 0.20 & 0.16 & 0.22 & 0.19 & 10.77 & 6.08 & 4.99 & 6.76 & 6.03 \\
+FI Helsingfors & 0.14 & 0.16 & 0.22 & 0.19 & 0.19 &  2.12 & 2.47 & 3.51 & 3.02 & 2.95 \\
+\midrule
+All            & 0.49 & 0.33 & 0.26 & 0.28 & 0.30 &  8.98 & 6.06 & 4.67 & 5.15 & 5.36 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{errorbyhourandweekday.png}
+    \caption{Errors by hour of day (left), and weekday (right)}
+    \label{fig:hod/weekday}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{errorsbycold.png}
+    \caption{Errors by temperature decile}
+    \label{fig:temperrs}
+\end{figure}
 
 \end{document}

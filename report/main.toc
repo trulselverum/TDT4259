@@ -1,0 +1,56 @@
+\babel@toc {english}{}\relax 
+\contentsline {section}{\numberline {1}Problem Definition and Business Understanding}{1}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Intro}{1}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Problem and Decision to be Supported}{1}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}Stakeholders}{1}{subsection.1.3}%
+\contentsline {subsection}{\numberline {1.4}Value Chain and Objectives}{2}{subsection.1.4}%
+\contentsline {subsection}{\numberline {1.5}Objectives and Success Criteria}{3}{subsection.1.5}%
+\contentsline {subsection}{\numberline {1.6}Constraints and Assumptions}{3}{subsection.1.6}%
+\contentsline {section}{\numberline {2}Data Understanding and Background}{4}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Domain Background}{4}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Dataset Description}{4}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Exploratory Data Analysis}{5}{subsection.2.3}%
+\contentsline {paragraph}{Consumption level and seasonality}{5}{section*.7}%
+\contentsline {paragraph}{Consumption and temperature}{5}{section*.9}%
+\contentsline {paragraph}{Daily and weekly patterns}{5}{section*.11}%
+\contentsline {subsection}{\numberline {2.4}Data Quality Issues}{9}{subsection.2.4}%
+\contentsline {subsection}{\numberline {2.5}Possible External Data}{9}{subsection.2.5}%
+\contentsline {subsection}{\numberline {2.6}Assumptions and Limitations}{9}{subsection.2.6}%
+\contentsline {section}{\numberline {3}Methods, Analysis and Technical Evaluation}{10}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Reproducing the Forecasting Situation}{10}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Data Processing}{10}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Feature Engineering}{12}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}Baseline Model}{14}{subsection.3.4}%
+\contentsline {subsection}{\numberline {3.5}Main Models -- Strengths and Limitations}{15}{subsection.3.5}%
+\contentsline {subsubsection}{\numberline {3.5.1}Gradient-Boosted Decision Trees (XGBoost)}{15}{subsubsection.3.5.1}%
+\contentsline {subsubsection}{\numberline {3.5.2}Convolutional Neural Networks (CNN)}{16}{subsubsection.3.5.2}%
+\contentsline {subsubsection}{\numberline {3.5.3}Long Short-Term Memory Networks (LSTM)}{16}{subsubsection.3.5.3}%
+\contentsline {subsubsection}{\numberline {3.5.4}Local models per area:}{16}{subsubsection.3.5.4}%
+\contentsline {subsection}{\numberline {3.6}Validation Approach}{16}{subsection.3.6}%
+\contentsline {subsection}{\numberline {3.7}Evaluation Metrics}{18}{subsection.3.7}%
+\contentsline {subsection}{\numberline {3.8}Results}{18}{subsection.3.8}%
+\contentsline {subsection}{\numberline {3.9}Error Analysis and Robustness}{18}{subsection.3.9}%
+\contentsline {subsection}{\numberline {3.10}Technical Limitations}{19}{subsection.3.10}%
+\contentsline {section}{\numberline {4}Business Evaluation, Value and Recommendations}{20}{section.4}%
+\contentsline {subsection}{\numberline {4.1}From Forecast Error to Imbalance}{20}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Business KPIs}{20}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Value for the Retailer and for Aneo}{22}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}Costs, Risks and Trade-offs}{23}{subsection.4.4}%
+\contentsline {subsection}{\numberline {4.5}Recommendations}{23}{subsection.4.5}%
+\contentsline {section}{\numberline {5}Deployment and Production Readiness}{25}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Production Architecture}{25}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Operational Workflow and Fallback Mechanisms}{27}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Testing and Validation Before Deployment}{28}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}Reproducibility, Security and Scalability}{29}{subsection.5.4}%
+\contentsline {subsection}{\numberline {5.5}Deployment Strategy}{30}{subsection.5.5}%
+\contentsline {section}{\numberline {6}Monitoring and Maintenance}{30}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Data Monitoring}{30}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Forecast Performance Monitoring}{30}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}Business KPI Monitoring}{31}{subsection.6.3}%
+\contentsline {subsection}{\numberline {6.4}Failure Modes and Alerts}{31}{subsection.6.4}%
+\contentsline {subsection}{\numberline {6.5}Responsibilities}{31}{subsection.6.5}%
+\contentsline {subsection}{\numberline {6.6}Maintenance Actions}{31}{subsection.6.6}%
+\contentsline {section}{\numberline {7}Conclusion}{31}{section.7}%
+\contentsline {section}{\numberline {A}Additional Figures and Tables}{32}{appendix.A}%
+\contentsline {subsection}{\numberline {A.1}Missing-data experiment}{32}{subsection.A.1}%
+\contentsline {subsection}{\numberline {A.2}Error analysis tables and plots}{33}{subsection.A.2}%
