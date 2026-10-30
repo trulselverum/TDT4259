@@ -12,18 +12,19 @@ import pandas as pd
 import torch
 from torch import nn
 
-from forecast_checks import ForecastValidator
+from forecast_checks import EXCLUDE_COLUMNS, ForecastValidator
 
 SEED = 42
 MAX_EPOCHS = 40
 PATIENCE = 5
 N_SEEDS = 5
 GRAD_CLIP = 1.0
-#Weather for the target hour. rain is left out (it is precipitation minus snow), and so is weekend (weekday covers it)
+#Weather for the target hour, minus EXCLUDE_COLUMNS. rain is left out (it is precipitation minus snow), and so is weekend (weekday covers it)
 #Precipitation and snowfall are mostly zero with rare large values, so they get log(1 + x) instead of standardizing:
 #snowfall is almost never above zero before December, so its training std is tiny and January snow would be 30+ std out
-SKEWED_WEATHER = ["precipitation", "snowfall"]
-WEATHER_COLS = [*SKEWED_WEATHER, "wind_speed_10m", "wind_direction_10m"]
+SKEWED_WEATHER = [c for c in ("precipitation", "snowfall") if c not in EXCLUDE_COLUMNS]
+WIND_COLS = [c for c in ("wind_speed_10m", "wind_direction_10m") if c not in EXCLUDE_COLUMNS]
+WEATHER_COLS = [*SKEWED_WEATHER, *WIND_COLS]
 FLAG_COLS = ["holiday"]
 STATIC_COLS = [*FLAG_COLS, *WEATHER_COLS]
 
@@ -45,10 +46,13 @@ class WindowScaler:
 
     def weather(self, data: pd.DataFrame) -> np.ndarray:
         """Log of the skewed amounts, standardized wind speed, and wind direction as sin/cos so 359° is next to 1°."""
-        radians = np.deg2rad(data["wind_direction_10m"])
-        return np.column_stack([*(np.log1p(data[col]) for col in SKEWED_WEATHER),
-                                (data["wind_speed_10m"] - self.wind_mean) / self.wind_std,
-                                np.sin(radians), np.cos(radians)])
+        parts = [np.log1p(data[col]) for col in SKEWED_WEATHER]
+        if "wind_speed_10m" in WIND_COLS:
+            parts.append((data["wind_speed_10m"] - self.wind_mean) / self.wind_std)
+        if "wind_direction_10m" in WIND_COLS:
+            radians = np.deg2rad(data["wind_direction_10m"])
+            parts += [np.sin(radians), np.cos(radians)]
+        return np.column_stack(parts)
 
     def levels(self, data: pd.DataFrame) -> np.ndarray:
         return data["location"].map(self.level).to_numpy(dtype=float)

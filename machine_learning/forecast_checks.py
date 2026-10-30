@@ -8,6 +8,7 @@ Weather is a forecast, so values up to and including day T are known.
 Usage:
     data = MakeTrainingData().get_train_test(0.8)      #data["train"]["feature"], data["train"]["target"]
     trainer = MakeTrainingData(window_hours=168)       #adds sliding windows of 168 hours
+    trainer = MakeTrainingData(exclude_columns=EXCLUDE_COLUMNS)   #the features every model leaves out
     checker = LeakageChecker(df)                       #raw data: time (UTC), location, consumption, temperature
     checker.check_features(lambda raw: FeatureBuilder(raw).add_lag_features((6, 7)).df)
     LeakageChecker.check_split(train["date"], test["date"])
@@ -51,6 +52,9 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 #Consumption is known up to the end of local day T-6. 145 h before any hour of day T is on or before that day,
 #also across the October DST change, where 144 h before 23:00 is 00:00 on day T-5
 WINDOW_START_LAG = 145
+#Left out of every model: the drop-column ablation (figures/3 .../feature_ablation.py) gave a lower validation MAE
+#without min of last day and wind, and no significant change without weekend and snowfall
+EXCLUDE_COLUMNS = ["min_consumption_last_available_day", "wind_direction_10m", "wind_speed_10m", "weekend", "snowfall"]
 
 
 class LeakageError(AssertionError):
